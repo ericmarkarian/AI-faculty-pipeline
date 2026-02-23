@@ -88,6 +88,3 @@ README.md
 .gitignore
 ```
 
-## Team
-
-Built by Eric Markarian as part of the Stanford Clinical Informatics fellowship under Dr. Natalie Pageler.
