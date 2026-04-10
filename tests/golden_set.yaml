@@ -1,0 +1,35 @@
+faculty:
+  - name: David Maahs
+    school: Stanford
+    archetype: high-signal
+    thresholds:
+      total_roles:
+        min: 3
+
+  - name: Anna Gloyn
+    school: Stanford
+    archetype: editorial-heavy
+    thresholds:
+      editorial_roles:
+        min: 1
+
+  - name: Tandy Aye
+    school: Stanford
+    archetype: society-heavy
+    thresholds:
+      society_roles:
+        min: 3
+
+  - name: Darrell Wilson
+    school: Stanford
+    archetype: grant-heavy
+    thresholds:
+      nih_grant_count:
+        min: 10
+
+  - name: Holly Cooper
+    school: Stanford
+    archetype: low-signal
+    thresholds:
+      total_roles:
+        exact: 0

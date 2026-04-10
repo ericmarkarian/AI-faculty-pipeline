@@ -1,0 +1,130 @@
+{
+  "Pediatric Endocrinology": {
+    "Harvard Medical School": {
+      "url": "https://research.childrenshospital.org/research-units/endocrinology-research/meet-our-team",
+      "notes": "Boston Children's Hospital (Harvard-affiliated) endocrinology research team page. Faculty hold Harvard Medical School appointments.",
+      "verified": true,
+      "needs_review": false
+    },
+    "Johns Hopkins School of Medicine": {
+      "url": "https://www.hopkinsmedicine.org/johns-hopkins-childrens-center/what-we-treat/specialties/endocrinology/our-team",
+      "notes": "Johns Hopkins Children's Center Pediatric Endocrinology team page. Lists faculty with names and titles.",
+      "verified": true,
+      "needs_review": false
+    },
+    "University of Pennsylvania Perelman School of Medicine": {
+      "url": "https://www.chop.edu/centers-programs/division-endocrinology-and-diabetes/our-team",
+      "notes": "CHOP Division of Endocrinology and Diabetes team page. Penn Pediatrics is joint with CHOP; faculty hold Penn appointments.",
+      "verified": true,
+      "needs_review": false
+    },
+    "Columbia University Vagelos College of Physicians and Surgeons": {
+      "url": "https://www.pediatrics.columbia.edu/about-us/divisions/endocrinology-diabetes-and-metabolism",
+      "notes": "Columbia University Department of Pediatrics Division of Endocrinology, Diabetes, and Metabolism faculty list.",
+      "verified": true,
+      "needs_review": false
+    },
+    "Stanford University School of Medicine": {
+      "url": "https://profiles.stanford.edu/browse/school-of-medicine/pediatrics/endocrinology?p=1&ps=100",
+      "notes": "Stanford Profiles browse page — returns all 36 faculty in one request. med.stanford.edu/pedsendo/faculty.html only shows 32.",
+      "verified": true,
+      "needs_review": false
+    },
+    "University of California San Francisco School of Medicine": {
+      "url": "https://pediatrics.ucsf.edu/1619791/endocrinology-faculty",
+      "notes": "UCSF Pediatric Endocrinology faculty list.",
+      "verified": true,
+      "needs_review": false
+    },
+    "Duke University School of Medicine": {
+      "url": "https://pediatrics.duke.edu/divisions/endocrinology/faculty",
+      "notes": "Duke Pediatric Endocrinology division faculty list.",
+      "verified": true,
+      "needs_review": false
+    },
+    "Washington University in St. Louis School of Medicine": {
+      "url": "https://pediatricendocrinology.wustl.edu/people/type/faculty/",
+      "notes": "WashU Division of Endocrinology & Diabetes faculty list.",
+      "verified": true,
+      "needs_review": false
+    },
+    "University of Michigan Medical School": {
+      "url": "https://medschool.umich.edu/departments/pediatrics/directory?f%5B0%5D=people_directory_unit_subunit%3A10221",
+      "notes": "UMich Pediatrics directory filtered to Pediatric Endocrinology (unit 10221). Shows 17 faculty.",
+      "verified": true,
+      "needs_review": false
+    },
+    "Yale School of Medicine": {
+      "url": "https://medicine.yale.edu/pediatrics/sections/endocrinology-diabetes/people",
+      "notes": "Yale Pediatric Endocrinology & Diabetes section people page.",
+      "verified": true,
+      "needs_review": false
+    },
+    "University of Colorado School of Medicine / Children's Hospital Colorado": {
+      "url": "https://medschool.cuanschutz.edu/pediatrics/sections/endocrinology/endocrinology-faculty",
+      "notes": "This page lists individual faculty members in the Pediatric Endocrinology division at the University of Colorado School of Medicine, including their names and titles.",
+      "verified": true,
+      "needs_review": false
+    },
+    "University of Cincinnati College of Medicine / Cincinnati Children's": {
+      "url": "https://www.cincinnatichildrens.org/education/clinical/fellowship/endocrinology/team",
+      "notes": "This page lists faculty members in the Pediatric Endocrinology division at Cincinnati Children's Hospital Medical Center, including their names and titles.",
+      "verified": true,
+      "needs_review": false
+    },
+    "Baylor College of Medicine / Texas Children's Hospital": {
+      "url": "https://www.bcm.edu/departments/pediatrics/divisions-and-centers/diabetes-and-endocrinology",
+      "notes": "This page provides an overview of the Division of Pediatric Diabetes and Endocrinology at Baylor College of Medicine, including information about their faculty and programs.",
+      "verified": true,
+      "needs_review": false
+    },
+    "University of Washington School of Medicine / Seattle Children's": {
+      "url": "https://www.peds.uw.edu/specialties/endocrinology",
+      "notes": "This page provides an overview of the Pediatric Endocrinology division at the University of Washington School of Medicine, including information about clinical programs, research, education, and leadership. It includes a link to view the faculty and staff directory.",
+      "verified": true,
+      "needs_review": false
+    },
+    "Children's National Hospital / George Washington University": {
+      "url": "https://appointments.childrensnational.org/specialty/Pediatric%20Endocrinology",
+      "notes": "This page lists multiple faculty members in the Pediatric Endocrinology division at Children's National Hospital, including their names, titles, and practice locations.",
+      "verified": true,
+      "needs_review": false
+    },
+    "Northwestern University Feinberg School of Medicine / Lurie Children's": {
+      "url": "https://www.luriechildrens.org/en/specialties-conditions/pediatric-endocrinology/",
+      "notes": "This page lists multiple faculty members in the Pediatric Endocrinology division at Lurie Children's Hospital, including their names and titles.",
+      "verified": true,
+      "needs_review": false
+    },
+    "NIH National Institute of Child Health and Human Development (NICHD)": {
+      "url": "https://www.nichd.nih.gov/about/org/dir/osd/tp/peitp/staff",
+      "notes": "This page lists the staff members of the Pediatric Endocrinology Inter-Institute Training Program at NICHD, including their names and titles.",
+      "verified": true,
+      "needs_review": false
+    },
+    "Keck School of Medicine USC / Children's Hospital Los Angeles": {
+      "url": "https://www.chla.org/center-endocrinology-diabetes-and-metabolism/team",
+      "notes": "CHLA Center for Endocrinology, Diabetes and Metabolism team page. Faculty list confirmed via Playwright (blocked HTTP HEAD check).",
+      "verified": true,
+      "needs_review": false
+    },
+    "Emory University School of Medicine / Children's Healthcare of Atlanta": {
+      "url": "https://med.emory.edu/departments/pediatrics/divisions/endocrinology/faculty/index.html",
+      "notes": "This page lists the faculty members of the Pediatric Endocrinology division at Emory University School of Medicine, including their names and titles.",
+      "verified": true,
+      "needs_review": false
+    },
+    "University of Florida College of Medicine": {
+      "url": "https://endo.pediatrics.med.ufl.edu/faculty-staff/faculty/",
+      "notes": "This page lists multiple faculty members of the Pediatric Endocrinology division at the University of Florida College of Medicine, including their names, titles, contact information, and photos.",
+      "verified": true,
+      "needs_review": false
+    },
+    "Ohio State University College of Medicine / Nationwide Children's": {
+      "url": "https://www.nationwidechildrens.org/for-medical-professionals/education-and-training/fellowship-programs/endocrinology-fellowship/meet-our-faculty",
+      "notes": "This page lists multiple faculty members in the Pediatric Endocrinology division at Nationwide Children's Hospital, including their names and titles.",
+      "verified": true,
+      "needs_review": false
+    }
+  }
+}

@@ -1,0 +1,11 @@
+.env
+__pycache__/
+*.pyc
+*.db
+faculty_output.csv
+faculty_output.json
+logs/
+tests/fixtures/roles/
+tests/fixtures/nih/
+tests/fixtures/hindex/
+ARCHITECTURE_AUDIT.md
