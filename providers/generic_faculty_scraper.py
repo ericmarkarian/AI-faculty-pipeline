@@ -103,6 +103,25 @@ def _chunk_html(html: str) -> list[str]:
     return chunks
 
 
+def _sanitize_for_json(text: str) -> str:
+    """
+    Remove characters that are illegal inside JSON strings and would cause
+    OpenAI to reject the request body with a 400 'invalid JSON' error:
+      - Null bytes (\x00) — most common cause
+      - Lone Unicode surrogates (U+D800–U+DFFF) — unpaired surrogates from
+        mis-decoded HTML pages can slip through BeautifulSoup
+      - ASCII control characters except tab/newline/carriage-return
+    """
+    # Drop null bytes and other ASCII control chars (keep \t \n \r)
+    text = "".join(
+        ch for ch in text
+        if ch == "\t" or ch == "\n" or ch == "\r" or (ord(ch) >= 0x20)
+    )
+    # Re-encode through UTF-8 with surrogateescape to drop lone surrogates
+    text = text.encode("utf-8", errors="replace").decode("utf-8", errors="replace")
+    return text
+
+
 def _extract_via_gpt4o(html: str, school: str, discipline: str, client: OpenAI) -> list[dict]:
     """
     Send cleaned HTML chunks to GPT-4o and extract a structured faculty list.
@@ -116,13 +135,14 @@ def _extract_via_gpt4o(html: str, school: str, discipline: str, client: OpenAI) 
     seen_names: set[str] = set()
 
     for i, chunk in enumerate(chunks):
+        safe_chunk = _sanitize_for_json(chunk)
         prompt = f"""You are extracting faculty data from a medical school directory page.
 
 School: {school}
 Discipline: {discipline}
 
 HTML chunk ({i + 1} of {len(chunks)}):
-{chunk}
+{safe_chunk}
 
 Extract ALL faculty members visible in this chunk. Include only people with academic appointments (Professor, Associate Professor, Assistant Professor, Instructor, Lecturer, Researcher, Scientist, Attending). Exclude residents, fellows, nurses, and administrative staff.
 
