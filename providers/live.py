@@ -82,6 +82,8 @@ Do NOT include:
 - Academic titles or ranks (Professor, Assistant Professor, Instructor, Lecturer, Attending)
 - General employment or affiliation (e.g. "Faculty, Stanford")
 - Degrees or credentials (MD, PhD, etc.)
+- Roles explicitly described as "former", "past", "previously", "emeritus", or "ex-"
+- Roles with end dates clearly in the past (e.g. "(2011 - 2013)") — only include current/active roles
 
 Respond ONLY with a JSON object with a single key "roles" containing an array.
 Each item must have exactly these keys:
@@ -89,7 +91,7 @@ Each item must have exactly these keys:
 - "role": the specific role title (e.g. "Associate Editor")
 - "org": the organization or journal name (e.g. "Diabetes Care")
 - "source_url": URL of the webpage where you found this
-- "evidence_text": a brief quote or description from that source confirming this role
+- "evidence_text": a RAW VERBATIM EXCERPT (up to 800 characters) copied word-for-word from the surrounding section of the source page where this role appears. Copy the full surrounding paragraph, list block, or table section — do NOT cherry-pick only the confirming sentence. Include enough context that a separate reviewer reading only this excerpt could independently confirm or deny the role claim. Do NOT paraphrase or summarize. If you cannot find raw source text, leave this field as an empty string.
 - "retrieved_at": current UTC timestamp in ISO 8601 format
 
 If no qualifying roles are found, return {{"roles": []}}.

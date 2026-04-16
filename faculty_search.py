@@ -37,7 +37,7 @@ from providers.qc import verify_faculty_roles
 client = OpenAI(api_key=os.environ.get("OPENAI_API_KEY"))
 SCOPUS_API_KEY = os.environ.get("SCOPUS_API_KEY")
 
-SCHOOLS = ["Stanford"]
+SCHOOLS = ["Stanford University School of Medicine"]
 DISCIPLINE = "Pediatric Endocrinology"
 MAX_WORKERS = 8  # Max concurrent faculty enrichments
 
@@ -524,6 +524,85 @@ def agent2_enrich(
 # Produces green / yellow / red per category and an overall signal.
 # ─────────────────────────────────────────────
 
+def _qc_cross_checks(results: list[dict]) -> None:
+    """
+    Run cohort-level QC checks after per-person verification:
+      1. Duplicate unique roles — flag if two people claim the same
+         singleton role (e.g. Division Chief) at the same org.
+      2. Completeness — flag high-profile faculty (h_index ≥ 30 or
+         nih_grant_count ≥ 5) who have zero roles found; likely a
+         scraping failure rather than genuinely no service activity.
+    Findings are printed and written into each faculty's qc dict
+    under "warnings".
+    """
+    # ── 1. Duplicate unique-role detection ───────────────────────────
+    SINGLETON_KEYWORDS = {
+        "chief", "chair", "president", "director", "dean",
+        "program director", "fellowship director",
+    }
+
+    # role_key → list of (name, category)
+    from collections import defaultdict
+    role_holders: dict[str, list[str]] = defaultdict(list)
+
+    for f in results:
+        name = f.get("full_name", "?")
+        for detail in (f.get("qc") or {}).get("role_details", []):
+            role_lower = detail.get("role", "").lower()
+            org_lower  = detail.get("org", "").lower()
+            if any(kw in role_lower for kw in SINGLETON_KEYWORDS):
+                key = f"{role_lower} @ {org_lower}"
+                role_holders[key].append(name)
+
+    duplicate_warnings: dict[str, list[str]] = {
+        k: v for k, v in role_holders.items() if len(v) > 1
+    }
+
+    if duplicate_warnings:
+        print("\n  [QC] ⚠ DUPLICATE SINGLETON ROLES DETECTED:")
+        for role_key, holders in duplicate_warnings.items():
+            print(f"       '{role_key}' claimed by: {', '.join(holders)}")
+
+    # Write duplicate warnings back into each affected faculty's qc dict
+    for f in results:
+        name = f.get("full_name", "?")
+        warnings = []
+        for role_key, holders in duplicate_warnings.items():
+            if name in holders:
+                others = [h for h in holders if h != name]
+                warnings.append(
+                    f"Role '{role_key}' also claimed by: {', '.join(others)}"
+                )
+        if warnings and f.get("qc"):
+            f["qc"]["warnings"] = f["qc"].get("warnings", []) + warnings
+
+    # ── 2. Completeness check ─────────────────────────────────────────
+    print("\n  [QC] Completeness check:")
+    for f in results:
+        name        = f.get("full_name", "?")
+        h_index     = f.get("h_index") or 0
+        grant_count = f.get("nih_grant_count") or 0
+        role_count  = sum(
+            len(f.get(f"{cat}_roles") or [])
+            for cat in ("editorial", "society", "leadership", "training")
+        )
+
+        is_senior = h_index >= 30 or grant_count >= 5
+        if is_senior and role_count == 0:
+            msg = (
+                f"SPARSE PROFILE — h_index={h_index}, grants={grant_count} "
+                f"but 0 roles found. Likely scraping failure."
+            )
+            print(f"       ⚠ {name}: {msg}")
+            if f.get("qc"):
+                f["qc"]["warnings"] = f["qc"].get("warnings", []) + [msg]
+                # Downgrade overall from green to yellow if vacuously green
+                if f["qc"].get("overall") == "green":
+                    f["qc"]["overall"] = "yellow"
+        else:
+            print(f"       ✓ {name}: {role_count} role(s), h={h_index}, grants={grant_count}")
+
+
 def agent3_qc(faculty_list: list[dict]) -> list[dict]:
     print(f"\n[Agent 3] Running QC on {len(faculty_list)} faculty members...")
 
@@ -549,7 +628,18 @@ def agent3_qc(faculty_list: list[dict]) -> list[dict]:
 
         results.append(faculty)
 
-    print(f"  -> QC complete. Green: {green}  Yellow: {yellow}  Red: {red}")
+    # Cohort-level checks
+    _qc_cross_checks(results)
+
+    # Recount after cross-checks may have downgraded some
+    green = yellow = red = 0
+    for f in results:
+        o = (f.get("qc") or {}).get("overall", "yellow")
+        if o == "green":    green  += 1
+        elif o == "yellow": yellow += 1
+        else:               red    += 1
+
+    print(f"\n  -> QC complete. Green: {green}  Yellow: {yellow}  Red: {red}")
     return results
 
 
