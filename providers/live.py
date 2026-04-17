@@ -116,33 +116,96 @@ _NIH_FIELDS = ["project_num", "project_title", "fiscal_year", "organization", "p
 _NIH_CONFIDENCE_THRESHOLD = 0.50
 
 
+# Suffixes stripped before searching OpenAlex (which indexes universities, not med schools)
+_MED_SUFFIXES = (
+    " school of medicine",
+    " college of medicine",
+    " medical school",
+    " school of medicine and health sciences",
+    " feinberg school of medicine",
+    " perelman school of medicine",
+    " vagelos college of physicians and surgeons",
+    " keck school of medicine",
+)
+
+
+def _openalex_search_one(query: str) -> list[str]:
+    """Return lowercase alias list for a single OpenAlex institution search query."""
+    resp = requests.get(
+        "https://api.openalex.org/institutions",
+        params={"search": query, "per_page": 1},
+        timeout=10,
+    )
+    resp.raise_for_status()
+    items = resp.json().get("results", [])
+    if not items:
+        return []
+    top = items[0]
+    raw: list[str] = [top.get("display_name", "")]
+    raw += top.get("display_name_alternatives") or []
+    if top.get("acronym"):
+        raw.append(top["acronym"])
+    return [a.lower() for a in raw if a]
+
+
+def _candidate_queries(school: str) -> list[str]:
+    """
+    Build a list of OpenAlex search strings to try for a school name.
+
+    Handles:
+      - "Stanford University School of Medicine"          → "Stanford University"
+      - "Baylor College of Medicine / Texas Children's"  → "Baylor College of Medicine"
+                                                            "Texas Children's Hospital"
+      - "Harvard Medical School"                         → "Harvard University"
+    """
+    candidates: list[str] = []
+    # Split on " / " — some schools are listed as "A / B"
+    parts = [p.strip() for p in school.split(" / ")]
+    for part in parts:
+        candidates.append(part)
+        # Also try stripping known med-school suffixes to get the parent university
+        lower = part.lower()
+        for suffix in _MED_SUFFIXES:
+            if lower.endswith(suffix):
+                stripped = part[: len(part) - len(suffix)].strip()
+                if stripped:
+                    candidates.append(stripped)
+                break
+    # Deduplicate while preserving order
+    seen: set[str] = set()
+    return [c for c in candidates if not (c.lower() in seen or seen.add(c.lower()))]
+
+
 @functools.lru_cache(maxsize=64)
 def _get_openalex_aliases(school: str) -> tuple[str, ...]:
     """
     Fetch all known name variants for an institution from OpenAlex.
-    Returns a tuple of lowercase alias strings (cached per school).
+    Tries multiple query forms (strips med-school suffixes, splits combined names)
+    so that entries like "Stanford University School of Medicine" correctly resolve
+    to Stanford University's full alias set.
+    Returns a deduplicated tuple of lowercase strings (cached per school).
     """
-    try:
-        resp = requests.get(
-            "https://api.openalex.org/institutions",
-            params={"search": school, "per_page": 1},
-            timeout=10,
-        )
-        resp.raise_for_status()
-        items = resp.json().get("results", [])
-        if not items:
-            return (school.lower(),)
-        top = items[0]
-        raw: list[str] = [top.get("display_name", school)]
-        raw += top.get("display_name_alternatives") or []
-        if top.get("acronym"):
-            raw.append(top["acronym"])
-        aliases = tuple(a.lower() for a in raw if a)
-        print(f"      [OpenAlex] Aliases for '{school}': {aliases}")
-        return aliases
-    except Exception as e:
-        print(f"      [OpenAlex] Failed to fetch aliases for '{school}': {e}")
-        return (school.lower(),)
+    queries = _candidate_queries(school)
+    all_aliases: list[str] = []
+    seen: set[str] = set()
+
+    for query in queries:
+        try:
+            aliases = _openalex_search_one(query)
+            for a in aliases:
+                if a not in seen:
+                    seen.add(a)
+                    all_aliases.append(a)
+        except Exception as e:
+            print(f"      [OpenAlex] Query '{query}' failed: {e}")
+
+    if not all_aliases:
+        # Last-resort fallback: use the raw school string
+        all_aliases = [school.lower()]
+
+    result = tuple(all_aliases)
+    print(f"      [OpenAlex] Aliases for '{school}': {result}")
+    return result
 
 
 def _nih_search(payload: dict) -> list[dict]:
