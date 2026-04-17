@@ -266,9 +266,18 @@ If a field is not available, use null.
         print(f"  [!] Scraper failed for {school_name}: {e}")
 
     # Deduplicate
+    _EXCLUDE_TITLE_KEYWORDS = ("emeritus", "by courtesy", "courtesy")
+
+    def _is_excluded(f: dict) -> bool:
+        title = (f.get("title") or "").lower()
+        return any(kw in title for kw in _EXCLUDE_TITLE_KEYWORDS)
+
     seen: set[str] = set()
     deduped = []
     for f in all_faculty:
+        if _is_excluded(f):
+            print(f"  [Agent 1] Skipping '{f.get('full_name')}' (title: {f.get('title')})")
+            continue
         key = f.get("full_name", "").lower().strip()
         if key not in seen:
             seen.add(key)
