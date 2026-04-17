@@ -44,31 +44,6 @@ MAX_WORKERS = 8  # Max concurrent faculty enrichments
 # CACHE_DB  = "faculty_cache.db"
 # TTL_DAYS  = {"nih": 30, "h_index": 90, "roles": 7}
 
-# NIH Reporter org name wildcards (all-caps, substring matched by NIH API).
-# Key = school name as used in faculty_urls.json.
-INSTITUTION_NIH_NAMES: dict[str, list[str]] = {
-    "Stanford University School of Medicine":                                          ["STANFORD", "LUCILE SALTER PACKARD"],
-    "University of California San Francisco School of Medicine":                       ["UNIVERSITY OF CALIFORNIA SAN FRANCISCO", "UCSF"],
-    "Harvard Medical School":                                                          ["HARVARD", "BOSTON CHILDREN"],
-    "Johns Hopkins School of Medicine":                                                ["JOHNS HOPKINS"],
-    "University of Pennsylvania Perelman School of Medicine":                          ["UNIVERSITY OF PENNSYLVANIA", "CHILDREN'S HOSPITAL OF PHILADELPHIA"],
-    "Columbia University Vagelos College of Physicians and Surgeons":                  ["COLUMBIA UNIVERSITY"],
-    "Duke University School of Medicine":                                              ["DUKE UNIVERSITY"],
-    "Washington University in St. Louis School of Medicine":                           ["WASHINGTON UNIVERSITY"],
-    "University of Michigan Medical School":                                           ["UNIVERSITY OF MICHIGAN"],
-    "Yale School of Medicine":                                                         ["YALE UNIVERSITY"],
-    "University of Colorado School of Medicine / Children's Hospital Colorado":        ["UNIVERSITY OF COLORADO", "CHILDREN'S HOSPITAL COLORADO"],
-    "University of Cincinnati College of Medicine / Cincinnati Children's":            ["UNIVERSITY OF CINCINNATI", "CINCINNATI CHILDREN"],
-    "Baylor College of Medicine / Texas Children's Hospital":                          ["BAYLOR COLLEGE OF MEDICINE", "TEXAS CHILDREN"],
-    "University of Washington School of Medicine / Seattle Children's":                ["UNIVERSITY OF WASHINGTON", "SEATTLE CHILDREN"],
-    "Children's National Hospital / George Washington University":                     ["CHILDREN'S NATIONAL", "GEORGE WASHINGTON UNIVERSITY"],
-    "Northwestern University Feinberg School of Medicine / Lurie Children's":          ["NORTHWESTERN UNIVERSITY", "LURIE CHILDREN"],
-    "NIH National Institute of Child Health and Human Development (NICHD)":            ["NICHD", "NATIONAL INSTITUTE OF CHILD HEALTH"],
-    "Keck School of Medicine USC / Children's Hospital Los Angeles":                   ["UNIVERSITY OF SOUTHERN CALIFORNIA", "CHILDREN'S HOSPITAL LOS ANGELES"],
-    "Emory University School of Medicine / Children's Healthcare of Atlanta":          ["EMORY UNIVERSITY", "CHILDREN'S HEALTHCARE OF ATLANTA"],
-    "University of Florida College of Medicine":                                       ["UNIVERSITY OF FLORIDA"],
-    "Ohio State University College of Medicine / Nationwide Children's":               ["OHIO STATE UNIVERSITY", "NATIONWIDE CHILDREN"],
-}
 
 # Scopus affiliation keyword (lowercase, matched against affiliation string).
 INSTITUTION_KEYWORDS: dict[str, str] = {
@@ -141,92 +116,6 @@ def parse_json(raw: str) -> any:
 # def cache_get(name, institution): ...
 # def cache_update(name, institution, fields): ...
 
-
-# ─────────────────────────────────────────────
-# HELPER: NIH Reporter API
-# ─────────────────────────────────────────────
-
-def get_nih_grants(full_name: str, school: str) -> list[str]:
-    """Queries NIH Reporter API for grants by PI name.
-
-    Queries WITHOUT an org filter so grants at prior/partner institutions are
-    not missed. Uses organization.org_name (nested field) for post-hoc
-    institution confirmation. If confirmed → return all grants; if not
-    confirmed → accept only for distinctive last names (len >= 7).
-    """
-    t0 = time.time()
-    observe.metric("api_calls", sub="nih")
-    try:
-        parts = full_name.split()
-        parts = [p for p in parts if not any(c in p for c in ["MD", "PhD", "DO", "MPH", "MBA", "FAAP", "MS"])]
-        parts = [p.strip(".,") for p in parts if p.strip(".,")]
-
-        if len(parts) < 2:
-            return []
-
-        first_name = parts[0]
-        last_name = parts[-1]
-
-        inst_keywords = [
-            kw.lower() for kw in
-            INSTITUTION_NIH_NAMES.get(school, [school.upper().split("/")[0].strip()])
-        ]
-
-        payload = {
-            "criteria": {
-                "pi_names": [{"first_name": first_name, "last_name": last_name}],
-            },
-            "fields": ["project_num", "project_title", "fiscal_year", "organization"],
-            "limit": 100,
-            "offset": 0,
-        }
-        r = requests.post("https://api.reporter.nih.gov/v2/projects/search", json=payload, timeout=15)
-        data = r.json()
-        results = data.get("results", [])
-        print(f"      [NIH] Querying: first={first_name}, last={last_name} (no org filter) -> {len(results)} results")
-
-        if not results:
-            observe.log("api_call", provider="nih", faculty=full_name,
-                        grants_found=0, latency_ms=int((time.time() - t0) * 1000), status="ok")
-            return []
-
-        def _org_matches(item: dict) -> bool:
-            org = (item.get("organization") or {}).get("org_name") or ""
-            return any(kw in org.lower() for kw in inst_keywords)
-
-        institution_confirmed = any(_org_matches(item) for item in results)
-
-        if not institution_confirmed:
-            if len(last_name) < 7:
-                print(f"      [NIH] No institution match for {full_name} and last name '{last_name}' is too common — skipping")
-                observe.log("api_call", provider="nih", faculty=full_name,
-                            grants_found=0, latency_ms=int((time.time() - t0) * 1000), status="ok")
-                return []
-            print(f"      [NIH] No institution match for {full_name} but last name is distinctive — accepting {len(results)} grant(s)")
-
-        seen_nums = set()
-        grants = []
-        for item in results:
-            num = item.get("project_num", "Unknown")
-            if num not in seen_nums:
-                seen_nums.add(num)
-                grants.append({
-                    "project_num": num,
-                    "title": item.get("project_title", "Unknown title")
-                })
-
-        print(f"      [NIH] {full_name}: {len(grants)} grant(s) ({'institution confirmed' if institution_confirmed else 'distinctive name'})")
-        observe.log("api_call", provider="nih", faculty=full_name,
-                    grants_found=len(grants),
-                    latency_ms=int((time.time() - t0) * 1000), status="ok")
-        return grants
-
-    except Exception as e:
-        observe.metric("api_errors", sub="nih")
-        observe.log("api_error", level="error", provider="nih", faculty=full_name,
-                    error=str(e), latency_ms=int((time.time() - t0) * 1000))
-        print(f"      [NIH] Error for {full_name}: {e}")
-        return []
 
 
 # ─────────────────────────────────────────────

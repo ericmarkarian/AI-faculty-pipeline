@@ -109,83 +109,180 @@ def _parse_json(raw: str) -> dict:
     return json.loads(clean)
 
 
+import functools
+
+_NIH_SEARCH_URL = "https://api.reporter.nih.gov/v2/projects/search"
+_NIH_FIELDS = ["project_num", "project_title", "fiscal_year", "organization", "principal_investigators"]
+_NIH_CONFIDENCE_THRESHOLD = 0.50
+
+
+@functools.lru_cache(maxsize=64)
+def _get_openalex_aliases(school: str) -> tuple[str, ...]:
+    """
+    Fetch all known name variants for an institution from OpenAlex.
+    Returns a tuple of lowercase alias strings (cached per school).
+    """
+    try:
+        resp = requests.get(
+            "https://api.openalex.org/institutions",
+            params={"search": school, "per_page": 1},
+            timeout=10,
+        )
+        resp.raise_for_status()
+        items = resp.json().get("results", [])
+        if not items:
+            return (school.lower(),)
+        top = items[0]
+        raw: list[str] = [top.get("display_name", school)]
+        raw += top.get("display_name_alternatives") or []
+        if top.get("acronym"):
+            raw.append(top["acronym"])
+        aliases = tuple(a.lower() for a in raw if a)
+        print(f"      [OpenAlex] Aliases for '{school}': {aliases}")
+        return aliases
+    except Exception as e:
+        print(f"      [OpenAlex] Failed to fetch aliases for '{school}': {e}")
+        return (school.lower(),)
+
+
+def _nih_search(payload: dict) -> list[dict]:
+    r = requests.post(_NIH_SEARCH_URL, json=payload, timeout=20)
+    r.raise_for_status()
+    return r.json().get("results", [])
+
+
+def _nih_fetch_all_by_profile(profile_id: int) -> list[dict]:
+    """Paginate NIH Reporter to get every grant record for a given PI profile_id."""
+    all_results: list[dict] = []
+    offset = 0
+    limit = 500
+    while True:
+        payload = {
+            "criteria": {"pi_profile_ids": [profile_id]},
+            "fields": ["project_num", "project_title", "fiscal_year", "organization"],
+            "limit": limit,
+            "offset": offset,
+        }
+        r = requests.post(_NIH_SEARCH_URL, json=payload, timeout=20)
+        r.raise_for_status()
+        data = r.json()
+        batch = data.get("results", [])
+        all_results.extend(batch)
+        total = data.get("meta", {}).get("total", 0)
+        offset += limit
+        if offset >= total:
+            break
+    return all_results
+
+
 class LiveNihProvider(NihProvider):
     def get_grants(self, name: str, school: str) -> list[Grant]:
         """
-        Query NIH Reporter for all grants where this person is PI.
-
-        Strategy (mirrors the Scopus h-index scorer):
-          1. Query WITHOUT an org filter to get the full grant portfolio —
-             PIs move institutions; filtering by org misses grants awarded
-             at prior institutions or held at consortium partner sites.
-          2. Check whether any returned grant is associated with the
-             expected institution (institution confirmation signal).
-          3. If at least one grant matches the institution → high confidence
-             this is the right person → return ALL grants.
-          4. If zero grants match the institution → apply a name
-             distinctiveness check. Uncommon last names (≥7 chars) are
-             accepted; common/short last names are rejected to avoid
-             grabbing a different PI with the same name.
+        Full flow:
+          1. OpenAlex  — fetch all known institution name variants.
+          2. NIH name search — query by first+last, no org filter, get
+             principal_investigators.profile_id per result.
+          3. Disambiguate — score each unique PI profile by:
+               name similarity  (60 %) — fuzzy match of first + last name
+               institution hit  (40 %) — any grant org matches an OpenAlex alias
+          4. Accept best profile if score >= threshold; fallback to name
+             distinctiveness for profiles with no institution match.
+          5. Profile pull — query NIH by profile_id to get ALL grants
+             (active + historical + cross-institution), paginating if needed.
         """
         parts = _clean_name_parts(name)
         if len(parts) < 2:
             return []
-
         first_name, last_name = parts[0], parts[-1]
 
-        # Keywords used to recognise the institution in NIH org_name strings
-        inst_keywords = [
-            kw.lower() for kw in
-            _INSTITUTION_NIH_NAMES.get(school, [school.upper().split("/")[0].strip()])
-        ]
+        # Step 1 — institution aliases from OpenAlex
+        aliases: tuple[str, ...] = _get_openalex_aliases(school)
 
-        payload = {
-            "criteria": {
-                "pi_names": [{"first_name": first_name, "last_name": last_name}],
-            },
-            "fields": ["project_num", "project_title", "fiscal_year", "organization"],
-            "limit": 100,
-            "offset": 0,
-        }
-        r = requests.post(
-            "https://api.reporter.nih.gov/v2/projects/search",
-            json=payload,
-            timeout=15,
-        )
-        r.raise_for_status()
-
-        results = r.json().get("results", [])
-        if not results:
+        # Step 2 — name-based NIH search (no org filter)
+        try:
+            results = _nih_search({
+                "criteria": {"pi_names": [{"first_name": first_name, "last_name": last_name}]},
+                "fields": _NIH_FIELDS,
+                "limit": 500,
+                "offset": 0,
+            })
+        except Exception as e:
+            print(f"      [NIH] Search failed for {name}: {e}")
             return []
 
-        # Check whether any grant is affiliated with the expected institution
-        def _org_matches(item: dict) -> bool:
-            org = (item.get("organization") or {}).get("org_name") or ""
-            org_lower = org.lower()
-            return any(kw in org_lower for kw in inst_keywords)
+        if not results:
+            print(f"      [NIH] No results for {name}")
+            return []
 
-        institution_confirmed = any(_org_matches(item) for item in results)
+        print(f"      [NIH] Name search '{first_name} {last_name}' → {len(results)} candidate grant(s)")
 
-        if not institution_confirmed:
-            # Fallback: accept results only for distinctive last names
-            # (len ≥ 7 is a rough proxy for uncommon surnames)
-            if len(last_name) < 7:
-                print(f"      [NIH] No institution match for {name} and last name '{last_name}' "
-                      f"is too common — skipping to avoid false PI match")
+        # Step 3 — build per-profile scoring map
+        # profile_id → {pi_name, name_score, orgs, inst_hit}
+        profiles: dict[int, dict] = {}
+        for item in results:
+            org_name = ((item.get("organization") or {}).get("org_name") or "").lower()
+            for pi in (item.get("principal_investigators") or []):
+                pid = pi.get("profile_id")
+                if not pid:
+                    continue
+                if pid not in profiles:
+                    pi_first = (pi.get("first_name") or "").strip().lower()
+                    pi_last  = (pi.get("last_name")  or "").strip().lower()
+                    first_sim = fuzz.ratio(first_name.lower(), pi_first) / 100.0
+                    last_sim  = fuzz.ratio(last_name.lower(),  pi_last)  / 100.0
+                    name_score = 0.3 * first_sim + 0.7 * last_sim
+                    profiles[pid] = {
+                        "pi_name": f"{pi.get('first_name','')} {pi.get('last_name','')}".strip(),
+                        "name_score": name_score,
+                        "orgs": set(),
+                        "inst_hit": False,
+                    }
+                profiles[pid]["orgs"].add(org_name)
+
+        # Institution match: any org in grant history hits an OpenAlex alias
+        for prof in profiles.values():
+            prof["inst_hit"] = any(
+                alias in org
+                for org in prof["orgs"]
+                for alias in aliases
+            )
+
+        def _combined(prof: dict) -> float:
+            return 0.6 * prof["name_score"] + 0.4 * (1.0 if prof["inst_hit"] else 0.0)
+
+        best_pid  = max(profiles, key=lambda pid: _combined(profiles[pid]))
+        best      = profiles[best_pid]
+        score     = _combined(best)
+
+        print(f"      [NIH] Best PI match: '{best['pi_name']}' "
+              f"(score={score:.2f}, name={best['name_score']:.2f}, "
+              f"inst={'yes' if best['inst_hit'] else 'no'})")
+
+        # Step 4 — confidence gate
+        if score < _NIH_CONFIDENCE_THRESHOLD:
+            if not best["inst_hit"] and len(last_name) < 7:
+                print(f"      [NIH] Low confidence + common name — skipping {name}")
                 return []
-            print(f"      [NIH] No institution match for {name} but last name is distinctive "
-                  f"— accepting {len(results)} grant(s)")
+            print(f"      [NIH] Low inst confidence but distinctive name — proceeding for {name}")
+
+        # Step 5 — pull ALL grants by profile_id (active + historical)
+        try:
+            all_items = _nih_fetch_all_by_profile(best_pid)
+        except Exception as e:
+            print(f"      [NIH] Profile pull failed for profile_id={best_pid}: {e}")
+            # Degrade gracefully: return what the name search already found
+            all_items = results
 
         seen: set[str] = set()
         grants: list[Grant] = []
-        for item in results:
+        for item in all_items:
             num = item.get("project_num", "Unknown")
             if num not in seen:
                 seen.add(num)
                 grants.append({"project_num": num, "title": item.get("project_title", "")})
 
-        print(f"      [NIH] {name}: {len(grants)} grant(s) "
-              f"({'institution confirmed' if institution_confirmed else 'distinctive name'})")
+        print(f"      [NIH] {name}: {len(grants)} total grant(s) "
+              f"(profile_id={best_pid}, all institutions, all years)")
         return grants
 
 
