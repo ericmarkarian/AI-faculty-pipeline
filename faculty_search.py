@@ -147,7 +147,13 @@ def parse_json(raw: str) -> any:
 # ─────────────────────────────────────────────
 
 def get_nih_grants(full_name: str, school: str) -> list[str]:
-    """Queries NIH Reporter API for active grants by PI name and institution."""
+    """Queries NIH Reporter API for grants by PI name.
+
+    Queries WITHOUT an org filter so grants at prior/partner institutions are
+    not missed. Uses organization.org_name (nested field) for post-hoc
+    institution confirmation. If confirmed → return all grants; if not
+    confirmed → accept only for distinctive last names (len >= 7).
+    """
     t0 = time.time()
     observe.metric("api_calls", sub="nih")
     try:
@@ -161,38 +167,55 @@ def get_nih_grants(full_name: str, school: str) -> list[str]:
         first_name = parts[0]
         last_name = parts[-1]
 
-        org_names = INSTITUTION_NIH_NAMES.get(school, [school.upper().split("/")[0].strip()])
+        inst_keywords = [
+            kw.lower() for kw in
+            INSTITUTION_NIH_NAMES.get(school, [school.upper().split("/")[0].strip()])
+        ]
 
-        def query_nih(fn, ln):
-            payload = {
-                "criteria": {
-                    "pi_names": [{"first_name": fn, "last_name": ln}],
-                    "org_names": org_names,
-                },
-                "fields": ["project_num", "project_title", "fiscal_year", "award_amount", "project_start_date", "project_end_date"],
-                "limit": 100,
-                "offset": 0
-            }
-            r = requests.post("https://api.reporter.nih.gov/v2/projects/search", json=payload, timeout=15)
-            data = r.json()
-            results = data.get("results", [])
-            print(f"      [NIH] Querying: first={fn}, last={ln}, orgs={org_names} -> {len(results)} results (total={data.get('meta', {}).get('total', '?')})")
-            return results
+        payload = {
+            "criteria": {
+                "pi_names": [{"first_name": first_name, "last_name": last_name}],
+            },
+            "fields": ["project_num", "project_title", "fiscal_year", "organization"],
+            "limit": 100,
+            "offset": 0,
+        }
+        r = requests.post("https://api.reporter.nih.gov/v2/projects/search", json=payload, timeout=15)
+        data = r.json()
+        results = data.get("results", [])
+        print(f"      [NIH] Querying: first={first_name}, last={last_name} (no org filter) -> {len(results)} results")
 
-        # Primary query
-        results = query_nih(first_name, last_name)
+        if not results:
+            observe.log("api_call", provider="nih", faculty=full_name,
+                        grants_found=0, latency_ms=int((time.time() - t0) * 1000), status="ok")
+            return []
+
+        def _org_matches(item: dict) -> bool:
+            org = (item.get("organization") or {}).get("org_name") or ""
+            return any(kw in org.lower() for kw in inst_keywords)
+
+        institution_confirmed = any(_org_matches(item) for item in results)
+
+        if not institution_confirmed:
+            if len(last_name) < 7:
+                print(f"      [NIH] No institution match for {full_name} and last name '{last_name}' is too common — skipping")
+                observe.log("api_call", provider="nih", faculty=full_name,
+                            grants_found=0, latency_ms=int((time.time() - t0) * 1000), status="ok")
+                return []
+            print(f"      [NIH] No institution match for {full_name} but last name is distinctive — accepting {len(results)} grant(s)")
 
         seen_nums = set()
         grants = []
-        for r in results:
-            num = r.get("project_num", "Unknown")
+        for item in results:
+            num = item.get("project_num", "Unknown")
             if num not in seen_nums:
                 seen_nums.add(num)
                 grants.append({
                     "project_num": num,
-                    "title": r.get("project_title", "Unknown title")
+                    "title": item.get("project_title", "Unknown title")
                 })
 
+        print(f"      [NIH] {full_name}: {len(grants)} grant(s) ({'institution confirmed' if institution_confirmed else 'distinctive name'})")
         observe.log("api_call", provider="nih", faculty=full_name,
                     grants_found=len(grants),
                     latency_ms=int((time.time() - t0) * 1000), status="ok")

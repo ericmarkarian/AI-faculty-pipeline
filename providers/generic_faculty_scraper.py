@@ -144,7 +144,7 @@ Discipline: {discipline}
 HTML chunk ({i + 1} of {len(chunks)}):
 {safe_chunk}
 
-Extract ALL faculty members visible in this chunk. Include only people with academic appointments (Professor, Associate Professor, Assistant Professor, Instructor, Lecturer, Researcher, Scientist, Attending). Exclude residents, fellows, nurses, and administrative staff.
+Extract faculty members visible in this chunk whose PRIMARY discipline is {discipline}. Include people with academic appointments (Professor, Associate Professor, Assistant Professor, Instructor, Lecturer, Researcher, Scientist, Attending) whose title or listed specialty indicates they work in {discipline}. Exclude anyone whose title shows a different primary specialty (e.g. "by courtesy" appointments, visiting faculty from unrelated fields, or people whose title names a different department as their main affiliation). Exclude residents, fellows, nurses, and administrative staff.
 
 Return ONLY a JSON array with no explanation. Each item must have:
 - "full_name": string
@@ -254,6 +254,10 @@ class GenericFacultyScraper(ScraperProvider):
                 continue
             name = item.get("full_name") or item.get("name") or ""
             if not name:
+                continue
+            title_lower = (item.get("title") or "").lower()
+            if "by courtesy" in title_lower or "courtesy appointment" in title_lower:
+                print(f"    [GenericScraper] Skipping courtesy appointment: {name} ({item.get('title')})")
                 continue
             records.append(FacultyRecord(
                 full_name=name.strip(),

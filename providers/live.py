@@ -111,19 +111,39 @@ def _parse_json(raw: str) -> dict:
 
 class LiveNihProvider(NihProvider):
     def get_grants(self, name: str, school: str) -> list[Grant]:
+        """
+        Query NIH Reporter for all grants where this person is PI.
+
+        Strategy (mirrors the Scopus h-index scorer):
+          1. Query WITHOUT an org filter to get the full grant portfolio —
+             PIs move institutions; filtering by org misses grants awarded
+             at prior institutions or held at consortium partner sites.
+          2. Check whether any returned grant is associated with the
+             expected institution (institution confirmation signal).
+          3. If at least one grant matches the institution → high confidence
+             this is the right person → return ALL grants.
+          4. If zero grants match the institution → apply a name
+             distinctiveness check. Uncommon last names (≥7 chars) are
+             accepted; common/short last names are rejected to avoid
+             grabbing a different PI with the same name.
+        """
         parts = _clean_name_parts(name)
         if len(parts) < 2:
             return []
 
         first_name, last_name = parts[0], parts[-1]
-        org_names = _INSTITUTION_NIH_NAMES.get(school, [school.upper().split("/")[0].strip()])
+
+        # Keywords used to recognise the institution in NIH org_name strings
+        inst_keywords = [
+            kw.lower() for kw in
+            _INSTITUTION_NIH_NAMES.get(school, [school.upper().split("/")[0].strip()])
+        ]
 
         payload = {
             "criteria": {
                 "pi_names": [{"first_name": first_name, "last_name": last_name}],
-                "org_names": org_names,
             },
-            "fields": ["project_num", "project_title", "fiscal_year"],
+            "fields": ["project_num", "project_title", "fiscal_year", "organization"],
             "limit": 100,
             "offset": 0,
         }
@@ -134,13 +154,38 @@ class LiveNihProvider(NihProvider):
         )
         r.raise_for_status()
 
+        results = r.json().get("results", [])
+        if not results:
+            return []
+
+        # Check whether any grant is affiliated with the expected institution
+        def _org_matches(item: dict) -> bool:
+            org = (item.get("organization") or {}).get("org_name") or ""
+            org_lower = org.lower()
+            return any(kw in org_lower for kw in inst_keywords)
+
+        institution_confirmed = any(_org_matches(item) for item in results)
+
+        if not institution_confirmed:
+            # Fallback: accept results only for distinctive last names
+            # (len ≥ 7 is a rough proxy for uncommon surnames)
+            if len(last_name) < 7:
+                print(f"      [NIH] No institution match for {name} and last name '{last_name}' "
+                      f"is too common — skipping to avoid false PI match")
+                return []
+            print(f"      [NIH] No institution match for {name} but last name is distinctive "
+                  f"— accepting {len(results)} grant(s)")
+
         seen: set[str] = set()
         grants: list[Grant] = []
-        for item in r.json().get("results", []):
+        for item in results:
             num = item.get("project_num", "Unknown")
             if num not in seen:
                 seen.add(num)
                 grants.append({"project_num": num, "title": item.get("project_title", "")})
+
+        print(f"      [NIH] {name}: {len(grants)} grant(s) "
+              f"({'institution confirmed' if institution_confirmed else 'distinctive name'})")
         return grants
 
 
