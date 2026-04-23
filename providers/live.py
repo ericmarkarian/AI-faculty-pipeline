@@ -110,6 +110,7 @@ def _parse_json(raw: str) -> dict:
 
 
 import functools
+import os
 
 _NIH_SEARCH_URL = "https://api.reporter.nih.gov/v2/projects/search"
 _NIH_FIELDS = ["project_num", "project_title", "fiscal_year", "organization", "principal_investigators"]
@@ -129,22 +130,81 @@ _MED_SUFFIXES = (
 )
 
 
-def _openalex_search_one(query: str) -> list[str]:
-    """Return lowercase alias list for a single OpenAlex institution search query."""
+_OA_GENERIC = frozenset({
+    "university", "the", "college", "of", "at", "a", "and",
+    "school", "institute", "medical", "health",
+})
+
+
+def _openalex_fetch(search_term: str) -> list[dict]:
     resp = requests.get(
         "https://api.openalex.org/institutions",
-        params={"search": query, "per_page": 1},
+        params={"search": search_term, "per_page": 25},
         timeout=10,
     )
     resp.raise_for_status()
-    items = resp.json().get("results", [])
+    return resp.json().get("results", [])
+
+
+def _distinctive_prefix(query: str) -> str:
+    """Return the run of distinctive leading words from a query.
+
+    Stops at the first generic word.  Examples:
+      "Stanford University School of Medicine" → "Stanford"
+      "Johns Hopkins University"               → "Johns Hopkins"
+      "University of Michigan Medical School"  → ""  (starts generic)
+    """
+    words = query.split()
+    prefix: list[str] = []
+    for w in words:
+        if w.lower() in _OA_GENERIC:
+            break
+        prefix.append(w)
+    return " ".join(prefix)
+
+
+def _openalex_search_one(query: str) -> list[str]:
+    """Return lowercase alias list for a single OpenAlex institution search query.
+
+    Strategy:
+    - If the query starts with a distinctive prefix ("Stanford", "Johns Hopkins"),
+      search OpenAlex by that prefix to get broad recall of all related entities,
+      then filter results to those whose display_name contains the prefix.
+    - If the query starts with a generic word ("University of …"), use the full
+      query so OpenAlex ranking returns the correct specific institution; all
+      returned results are included (the specific query already limits scope).
+    """
+    words = query.split()
+    if not words:
+        return []
+
+    prefix = _distinctive_prefix(query)
+    has_prefix = bool(prefix) and len(prefix) >= 4
+
+    items = _openalex_fetch(prefix) if has_prefix else _openalex_fetch(query)
     if not items:
         return []
-    top = items[0]
-    raw: list[str] = [top.get("display_name", "")]
-    raw += top.get("display_name_alternatives") or []
-    if top.get("acronym"):
-        raw.append(top["acronym"])
+
+    if has_prefix:
+        pattern = re.compile(r"\b" + re.escape(prefix.lower()) + r"\b")
+    else:
+        # Fall back to filtering by the first non-generic word
+        filter_word = next(
+            (w.lower() for w in words if w.lower() not in _OA_GENERIC),
+            words[0].lower(),
+        )
+        pattern = re.compile(r"\b" + re.escape(filter_word) + r"\b")
+
+    raw: list[str] = []
+    for item in items:
+        dn = item.get("display_name") or ""
+        if not pattern.search(dn.lower()):
+            continue
+        raw.append(dn)
+        raw += item.get("display_name_alternatives") or []
+        if item.get("acronym"):
+            raw.append(item["acronym"])
+
     return [a.lower() for a in raw if a]
 
 
@@ -176,15 +236,114 @@ def _candidate_queries(school: str) -> list[str]:
     return [c for c in candidates if not (c.lower() in seen or seen.add(c.lower()))]
 
 
+_XLSX_PATH = os.path.join(os.path.dirname(__file__), "..", "medical_schools_lookup.xlsx")
+
+_PAREN_RE = re.compile(r"\s*\([^)]+\)")
+
+
+def _parse_hospital_field(raw: str) -> list[str]:
+    """Split a hospital field on ';', strip parentheticals, return clean names."""
+    names: list[str] = []
+    for part in raw.split(";"):
+        part = part.strip()
+        if not part or part.lower().startswith("n/a"):
+            continue
+        paren = re.search(r"\(([^)]+)\)", part)
+        base = _PAREN_RE.sub("", part).strip()
+        if base:
+            names.append(base)
+        if paren:
+            names.append(paren.group(1).strip())
+    return names
+
+
+@functools.lru_cache(maxsize=1)
+def _load_xlsx_aliases() -> dict[str, frozenset[str]]:
+    """
+    Load medical_schools_lookup.xlsx into a dict:
+      lowercase school name → frozenset of lowercase alias strings
+    (school name + primary teaching hospital + all major affiliated hospitals).
+    """
+    try:
+        import pandas as pd
+        df = pd.read_excel(_XLSX_PATH, sheet_name="All Schools")
+    except Exception as exc:
+        print(f"[Lookup] Could not load medical_schools_lookup.xlsx: {exc}")
+        return {}
+
+    result: dict[str, frozenset[str]] = {}
+    for _, row in df.iterrows():
+        school = str(row.get("School Name") or "").strip()
+        if not school or school == "nan":
+            continue
+        aliases: set[str] = {school.lower()}
+        for col in ("Primary Teaching Hospital", "Major Affiliated Hospitals / Health Systems"):
+            val = str(row.get(col) or "").strip()
+            if val and val != "nan":
+                for name in _parse_hospital_field(val):
+                    aliases.add(name.lower())
+        result[school.lower()] = frozenset(aliases)
+    print(f"[Lookup] Loaded {len(result)} schools from xlsx")
+    return result
+
+
+def _xlsx_aliases_for(school: str) -> tuple[str, ...] | None:
+    """
+    Return alias tuple for a school from the xlsx lookup.
+    Handles:
+      - Exact match (case-insensitive)
+      - Combined names with ' / ' — tries each part separately
+      - Fuzzy fallback via token_set_ratio (threshold 75)
+    Returns None if no confident match found.
+    """
+    from rapidfuzz import process as rp, fuzz as rf
+    lookup = _load_xlsx_aliases()
+    if not lookup:
+        return None
+
+    def _best_match(query: str) -> frozenset[str] | None:
+        q = query.lower().strip()
+        if q in lookup:
+            return lookup[q]
+        result = rp.extractOne(q, list(lookup.keys()), scorer=rf.token_set_ratio)
+        if result and result[1] >= 75:
+            return lookup[result[0]]
+        return None
+
+    # Try the full name first
+    found = _best_match(school)
+    if found:
+        return tuple(found)
+
+    # For combined names like "Baylor / Texas Children's", try each part
+    if " / " in school:
+        all_aliases: set[str] = set()
+        for part in school.split(" / "):
+            part_match = _best_match(part.strip())
+            if part_match:
+                all_aliases.update(part_match)
+        if all_aliases:
+            return tuple(all_aliases)
+
+    return None
+
+
 @functools.lru_cache(maxsize=64)
 def _get_openalex_aliases(school: str) -> tuple[str, ...]:
     """
-    Fetch all known name variants for an institution from OpenAlex.
-    Tries multiple query forms (strips med-school suffixes, splits combined names)
-    so that entries like "Stanford University School of Medicine" correctly resolve
-    to Stanford University's full alias set.
+    Return all known institution name variants for NIH grant org matching.
+    Primary source: medical_schools_lookup.xlsx (school + all affiliated hospitals).
+    Fallback: OpenAlex API (for institutions not in the xlsx).
     Returns a deduplicated tuple of lowercase strings (cached per school).
     """
+    # Try xlsx first
+    xlsx_result = _xlsx_aliases_for(school)
+    if xlsx_result:
+        print(f"      [Lookup] Aliases for '{school}' ({len(xlsx_result)} from xlsx): {xlsx_result}")
+        return xlsx_result
+
+    # Fall back to OpenAlex
+    print(f"      [OpenAlex] '{school}' not in xlsx — querying OpenAlex…")
     queries = _candidate_queries(school)
     all_aliases: list[str] = []
     seen: set[str] = set()
@@ -200,7 +359,6 @@ def _get_openalex_aliases(school: str) -> tuple[str, ...]:
             print(f"      [OpenAlex] Query '{query}' failed: {e}")
 
     if not all_aliases:
-        # Last-resort fallback: use the raw school string
         all_aliases = [school.lower()]
 
     result = tuple(all_aliases)
@@ -380,9 +538,6 @@ class LiveRolesProvider(RolesProvider):
 
 # ── Scoring helpers (used by LiveHIndexProvider) ──────────────────────────────
 
-ACCEPT_THRESHOLD = 0.6
-REVIEW_THRESHOLD = 0.35
-
 _GENERIC_WORDS = {
     "university", "universities", "medical", "center", "school", "hospital",
     "health", "institute", "system", "care", "college", "of", "and", "the",
@@ -391,58 +546,97 @@ _GENERIC_WORDS = {
     "child", "maternal", "cancer", "stem", "cell", "biology", "regenerative"
 }
 
-_DISCIPLINE_KEYWORDS = {
-    "Pediatric Endocrinology": [
-        "endocrinology", "pediatrics", "pediatric", "diabetes",
-        "metabolism", "endocrine", "growth", "thyroid", "adrenal"
-    ]
+_CREDENTIALS = {
+    "MD", "PHD", "DO", "DDS", "DMD", "DVM", "PHARMD", "DRPH",
+    "DPHIL", "MBBS", "MPH", "MS", "MSC", "MSN", "MHS", "MHA", "MBA",
+    "FAAP", "FACS", "FACP", "FACE", "DFAACAP", "RN", "NP", "PA",
+    "JR", "SR", "II", "III", "IV",
 }
 
-def _distinctive_words(name: str) -> list[str]:
-    words = re.findall(r"[a-zA-Z]+", name.lower())
-    return [w for w in words if w not in _GENERIC_WORDS and len(w) > 2]
+def _parse_name_for_scopus(full_name: str) -> tuple[str, str, str]:
+    """Return (first, middle_initial, last) stripped of credentials.
 
-def _affiliation_score(affil_string: str, aliases: list[str], city: str = "") -> float:
-    if not affil_string:
-        return 0.0
-    affil = affil_string.lower()
+    'Anna L. Gloyn, DPhil' → ('Anna', 'L', 'Gloyn')
+    'Anna Gloyn'           → ('Anna', '',  'Gloyn')
+    'José M. Rodriguez'    → ('José', 'M', 'Rodriguez')
+    """
+    name = full_name.split(",")[0].strip()
+    parts = [p.strip(".,") for p in name.split() if p.strip(".,").upper() not in _CREDENTIALS and p.strip(".,")]
+    if len(parts) < 2:
+        return "", "", ""
+    first = parts[0]
+    last  = parts[-1]
+    # middle initial: any single-letter part between first and last
+    middle = next((p for p in parts[1:-1] if len(p) == 1), "")
+    return first, middle, last
+
+
+def _scopus_affil_str(entry: dict) -> str:
+    affil = entry.get("affiliation-current", {})
+    if isinstance(affil, list):
+        return " ".join(a.get("affiliation-name", "") for a in affil)
+    if isinstance(affil, dict):
+        return affil.get("affiliation-name", "")
+    return ""
+
+
+def _affil_matches(affil_str: str, aliases: list[str]) -> bool:
+    """True if any alias fuzzy-matches the affiliation string."""
+    if not affil_str:
+        return False
+    affil = affil_str.lower()
     affil_words = set(re.findall(r"[a-zA-Z]+", affil))
-    score = 0.0
     for alias in aliases:
-        d_words = _distinctive_words(alias)
+        d_words = [w for w in re.findall(r"[a-zA-Z]+", alias.lower())
+                   if w not in _GENERIC_WORDS and len(w) > 2]
         if not d_words:
             continue
-        if not any(w in affil_words for w in d_words):
-            continue
-        if fuzz.partial_ratio(alias.lower(), affil) >= 85:
-            score += 0.5
-            break
-    if city and city.lower() in affil:
-        score += 0.2
-    return min(score, 1.0)
+        if any(w in affil_words for w in d_words) and fuzz.partial_ratio(alias.lower(), affil) >= 85:
+            return True
+    return False
 
-def _subject_area_score(subject_areas: list[str], discipline: str) -> float:
-    if not subject_areas:
-        return 0.0
-    keywords = _DISCIPLINE_KEYWORDS.get(discipline, [discipline.lower()])
-    areas_lower = " ".join(subject_areas).lower()
-    matched = sum(1 for kw in keywords if kw in areas_lower)
-    return min(matched * 0.1, 0.3)
 
-def _clean_name_for_scopus(full_name: str) -> tuple[str, str]:
-    """Better name cleaner — handles comma-separated credentials like 'Anna Gloyn, DPhil'."""
-    credentials = {
-        "MD", "PHD", "DO", "DDS", "DMD", "DVM", "PHARMD", "DRPH",
-        "DPHIL", "MBBS", "MPH", "MS", "MSC", "MSN", "MHS", "MHA", "MBA",
-        "FAAP", "FACS", "FACP", "FACE", "DFAACAP", "RN", "NP", "PA",
-        "JR", "SR", "II", "III", "IV",
-    }
-    name = full_name.split(",")[0].strip()
-    parts = [p for p in name.split() if p.strip(".,").upper() not in credentials]
-    parts = [p for p in parts if p.strip(".,")]
-    if len(parts) < 2:
-        return "", ""
-    return parts[0], parts[-1]
+def _name_matches(first: str, last: str, entry: dict) -> bool:
+    """True if last name matches well and first name is consistent."""
+    pref    = entry.get("preferred-name", {})
+    s_first = pref.get("given-name", "").lower().strip()
+    s_last  = pref.get("surname",    "").lower().strip()
+    if fuzz.ratio(last.lower(), s_last) < 90:
+        return False
+    if not first or not s_first:
+        return True
+    # first initial must agree
+    return s_first[0] == first[0].lower()
+
+
+def _scopus_search(query: str, api_key: str) -> list[dict]:
+    resp = requests.get(
+        "https://api.elsevier.com/content/search/author",
+        params={
+            "query": query,
+            "field": "dc:identifier,preferred-name,affiliation-current",
+            "count": 25,
+            "apiKey": api_key,
+        },
+        headers={"Accept": "application/json"},
+        timeout=15,
+    )
+    resp.raise_for_status()
+    entries = resp.json().get("search-results", {}).get("entry", [])
+    if not entries or "error" in entries[0]:
+        return []
+    return entries
+
+
+def _scopus_fetch_profile(author_id: str, api_key: str) -> dict:
+    resp = requests.get(
+        f"https://api.elsevier.com/content/author/author_id/{author_id}",
+        params={"field": "h-index,document-count,affiliation-current", "apiKey": api_key},
+        headers={"Accept": "application/json"},
+        timeout=15,
+    )
+    resp.raise_for_status()
+    return resp.json().get("author-retrieval-response", [{}])[0]
 
 
 class LiveHIndexProvider(HIndexProvider):
@@ -469,86 +663,89 @@ class LiveHIndexProvider(HIndexProvider):
                 "retrieved_at": now,
             }
 
-        first_name, last_name = _clean_name_for_scopus(name)
-        if not first_name or not last_name:
+        first, middle, last = _parse_name_for_scopus(name)
+        if not first or not last:
             return {
                 "h_index": None, "scopus_author_id": None,
                 "source_url": "", "evidence_text": f"Could not parse name: {name}",
                 "retrieved_at": now,
             }
 
-        # Step 1: Broad search — no affiliation filter, get 25 candidates
-        print(f"      [Scopus] Querying: AUTHLASTNAME({last_name}) AND AUTHFIRST({first_name})")
-        search_resp = requests.get(
-            "https://api.elsevier.com/content/search/author",
-            params={
-                "query": f"AUTHLASTNAME({last_name}) AND AUTHFIRST({first_name})",
-                "field": "dc:identifier,preferred-name,affiliation-current,subject-area",
-                "count": 10,
-                "apiKey": self._api_key,
-            },
-            headers={"Accept": "application/json"},
-            timeout=15,
-        )
-        search_resp.raise_for_status()
+        # Step 1: Search — try with middle initial first, fall back to first only
+        entries = []
+        for q in ([f"AUTHLASTNAME({last}) AND AUTHFIRST({first} {middle})"] if middle else []) + \
+                  [f"AUTHLASTNAME({last}) AND AUTHFIRST({first})"]:
+            print(f"      [Scopus] Querying: {q}")
+            entries = _scopus_search(q, self._api_key)
+            if entries:
+                break
 
-        entries = search_resp.json().get("search-results", {}).get("entry", [])
-        if not entries or "error" in entries[0]:
+        if not entries:
             return {
                 "h_index": None, "scopus_author_id": None,
                 "source_url": "", "evidence_text": f"No Scopus results for {name}",
                 "retrieved_at": now,
             }
 
-        # Build alias list for this school from _INSTITUTION_KEYWORDS
-        # Falls back to just the school name if not in map
-        school_keyword = _INSTITUTION_KEYWORDS.get(school, school.lower())
-        aliases = [school_keyword]
-
-        # Step 2: Score every candidate
-        scored = []
-        for entry in entries:
-            affil = entry.get("affiliation-current", {})
-            if isinstance(affil, list):
-                affil_str = " ".join(a.get("affiliation-name", "") for a in affil)
-            elif isinstance(affil, dict):
-                affil_str = affil.get("affiliation-name", "")
-            else:
-                affil_str = ""
-
-            subject_data = entry.get("subject-area", [])
-            if isinstance(subject_data, list):
-                subjects = [s.get("$", "") for s in subject_data]
-            elif isinstance(subject_data, dict):
-                subjects = [subject_data.get("$", "")]
-            else:
-                subjects = []
-
-            affil_s = _affiliation_score(affil_str, aliases)
-            subj_s  = _subject_area_score(subjects, self._discipline)
-            score   = min(affil_s + subj_s, 1.0)
-            scored.append((score, affil_str, entry))
-
-        scored.sort(key=lambda x: x[0], reverse=True)
-
-        # Log top candidates
-        print(f"      [Scopus] Top candidates for {name}:")
-        for s, affil_str, entry in scored[:4]:
-            n = entry.get("preferred-name", {})
-            display = f"{n.get('given-name', '')} {n.get('surname', '')}".strip()
-            label = "accepted" if s >= ACCEPT_THRESHOLD else ("needs_review" if s >= REVIEW_THRESHOLD else "discarded")
-            print(f"             score={s:.2f} ({label})  affil='{affil_str}'  name='{display}'")
-
-        best_score, best_affil, best_entry = scored[0]
-
-        if best_score < REVIEW_THRESHOLD:
+        # Step 2: Filter to name matches only
+        name_matches = [e for e in entries if _name_matches(first, last, e)]
+        if not name_matches:
             return {
                 "h_index": None, "scopus_author_id": None,
-                "source_url": "", "evidence_text": f"No confident match found (best score={best_score:.2f})",
+                "source_url": "", "evidence_text": f"No name match found in Scopus for {name}",
                 "retrieved_at": now,
             }
 
-        # Step 3: Fetch H-index for best match
+        xlsx_aliases = _xlsx_aliases_for(school)
+        aliases = list(xlsx_aliases) if xlsx_aliases else [school.lower()]
+
+        # Step 3: Pick best candidate
+        # First preference: search result already shows a matching affiliation
+        affil_match = next((e for e in name_matches if _affil_matches(_scopus_affil_str(e), aliases)), None)
+        if affil_match:
+            best_entry = affil_match
+            confidence = "high"
+            print(f"      [Scopus] Affiliation match in search results")
+        elif len(name_matches) == 1:
+            # One name match — fetch their full profile to check current affiliation
+            # (search index is often stale; profile reflects current institution)
+            best_entry = name_matches[0]
+            confidence = "needs_review"
+            pref = best_entry.get("preferred-name", {})
+            display = f"{pref.get('given-name','')} {pref.get('surname','')}".strip()
+            print(f"      [Scopus] Single name match '{display}' — will verify via profile")
+        else:
+            # Multiple name matches, none with matching affiliation in search results
+            # Try fetching profiles for each to find the one at this institution
+            best_entry = None
+            confidence = "needs_review"
+            for candidate in name_matches:
+                cid = candidate.get("dc:identifier", "").replace("AUTHOR_ID:", "")
+                if not cid:
+                    continue
+                try:
+                    prof = _scopus_fetch_profile(cid, self._api_key)
+                    affil_data = prof.get("author-profile", {}).get("affiliation-current", {})
+                    affil_name = ""
+                    if isinstance(affil_data, dict):
+                        affil_name = (affil_data.get("affiliation", {}) or {}).get("ip-doc", {}).get("sort-name", "")
+                    if _affil_matches(affil_name, aliases):
+                        best_entry = candidate
+                        confidence = "high"
+                        print(f"      [Scopus] Found affiliation match via profile fetch")
+                        break
+                except Exception:
+                    continue
+            if best_entry is None:
+                pref = name_matches[0].get("preferred-name", {})
+                display = f"{pref.get('given-name','')} {pref.get('surname','')}".strip()
+                print(f"      [Scopus] Multiple matches for '{last}', no affiliation confirmed — skipping. Top: '{display}'")
+                return {
+                    "h_index": None, "scopus_author_id": None,
+                    "source_url": "", "evidence_text": "Multiple name matches, no affiliation confirmed — skipped",
+                    "retrieved_at": now,
+                }
+
         author_id = best_entry.get("dc:identifier", "").replace("AUTHOR_ID:", "")
         if not author_id:
             return {
@@ -557,26 +754,34 @@ class LiveHIndexProvider(HIndexProvider):
                 "retrieved_at": now,
             }
 
-        print(f"      [Scopus] Fetching profile for author_id={author_id} (score={best_score:.2f})")
-        profile_resp = requests.get(
-            f"https://api.elsevier.com/content/author/author_id/{author_id}",
-            params={"field": "h-index,document-count,citation-count", "apiKey": self._api_key},
-            headers={"Accept": "application/json"},
-            timeout=15,
-        )
-        profile_resp.raise_for_status()
+        # Step 4: Fetch full profile for h-index (also has current affiliation)
+        print(f"      [Scopus] Fetching profile for author_id={author_id}")
+        profile_data  = _scopus_fetch_profile(author_id, self._api_key)
+        h_index_val   = profile_data.get("h-index")
+        doc_count     = profile_data.get("coredata", {}).get("document-count", "?")
+        h_index       = int(h_index_val) if h_index_val is not None else None
 
-        response_data = profile_resp.json().get("author-retrieval-response", [{}])[0]
-        h_index_val = response_data.get("h-index")
-        doc_count = response_data.get("coredata", {}).get("document-count", "?")
-        h_index = int(h_index_val) if h_index_val is not None else None
+        # If search showed stale affiliation, use profile's current affiliation for display
+        profile_affil = ""
+        try:
+            affil_data   = profile_data.get("author-profile", {}).get("affiliation-current", {})
+            profile_affil = (affil_data.get("affiliation", {}) or {}).get("ip-doc", {}).get("sort-name", "")
+        except Exception:
+            pass
+        display_affil = profile_affil or _scopus_affil_str(best_entry)
 
-        resolution = "accepted" if best_score >= ACCEPT_THRESHOLD else "needs_review"
+        # Upgrade confidence if profile affiliation now matches
+        if confidence == "needs_review" and _affil_matches(profile_affil, aliases):
+            confidence = "high"
+
+        pref    = best_entry.get("preferred-name", {})
+        display = f"{pref.get('given-name','')} {pref.get('surname','')}".strip()
+        print(f"      [Scopus] Matched '{display}' @ '{display_affil}' (confidence={confidence}, h-index={h_index})")
 
         return {
             "h_index": h_index,
             "scopus_author_id": author_id,
             "source_url": f"https://www.scopus.com/authid/detail.uri?authorId={author_id}",
-            "evidence_text": f"Scopus: h-index={h_index}, documents={doc_count}, matched_affil='{best_affil}', confidence={best_score:.2f}, resolution={resolution}",
+            "evidence_text": f"Scopus: h-index={h_index}, documents={doc_count}, affil='{display_affil}', confidence={confidence}",
             "retrieved_at": now,
         }

@@ -843,6 +843,10 @@ function SchoolSelector({ selected, setSelected, typeFilter }) {
 
 /* ── App ── */
 function App() {
+  /* ── Tab state ── */
+  const [activeTab,setActiveTab] = useState('search');
+
+  /* ── School Search tab state ── */
   const [selected,setSelected]       = useState([]);
   const [specialty,setSpecialty]     = useState('');
   const [typeFilter,setTypeFilter]   = useState('ALL');
@@ -860,6 +864,27 @@ function App() {
   const [qcModal,setQcModal]         = useState(null);
   const [detailFaculty,setDetail]    = useState(null);
   const esRef = useRef(null);
+
+  /* ── Name Lookup tab state ── */
+  const [nlInputMode,setNlInputMode]   = useState('csv');
+  const [nlParsed,setNlParsed]         = useState([]);
+  const [nlParseError,setNlParseError] = useState('');
+  const [nlRawText,setNlRawText]       = useState('');
+  const [nlFileName,setNlFileName]     = useState('');
+  const [nlResults,setNlResults]       = useState([]);
+  const [nlLoading,setNlLoading]       = useState(false);
+  const [nlRan,setNlRan]               = useState(false);
+  const [nlSortCol,setNlSortCol]       = useState('full_name');
+  const [nlSortDir,setNlSortDir]       = useState('asc');
+  const [nlTableSearch,setNlTableSearch] = useState('');
+  const [nlMinH,setNlMinH]             = useState('');
+  const [nlMinGrants,setNlMinGrants]   = useState('');
+  const [nlRankFilter,setNlRankFilter] = useState('ALL');
+  const [nlProgress,setNlProgress]     = useState({done:0,total:0,phase:''});
+  const [nlErrorMsg,setNlErrorMsg]     = useState('');
+  const [nlQcModal,setNlQcModal]       = useState(null);
+  const [nlDetail,setNlDetail]         = useState(null);
+  const nlEsRef = useRef(null);
 
   const hasRun = loading || results.length > 0 || ran;
   const canRun = selected.length > 0 && specialty && !loading;
@@ -885,6 +910,100 @@ function App() {
     es.onerror=()=>{ setErrorMsg('Stream connection lost.'); es.close(); esRef.current=null; setLoading(false); };
   };
 
+  /* ── CSV / manual parse helpers ── */
+  const parseCsvLine = line => {
+    const cols=[]; let cur='', inQ=false;
+    for(const ch of line){
+      if(ch==='"'){ inQ=!inQ; }
+      else if(ch===','&&!inQ){ cols.push(cur.trim()); cur=''; }
+      else { cur+=ch; }
+    }
+    cols.push(cur.trim());
+    return cols;
+  };
+
+  const parseCsvText = text => {
+    const lines=text.trim().split('\n').filter(l=>l.trim());
+    if(lines.length<2) return {records:[],error:'CSV needs a header row plus at least one data row.'};
+    const hdr=parseCsvLine(lines[0]).map(h=>h.replace(/^"|"$/g,'').toLowerCase().trim());
+    const nameIdx=hdr.findIndex(h=>h==='name'||h==='full_name'||h==='fullname');
+    const instIdx=hdr.findIndex(h=>h==='institution'||h==='school'||h==='affiliation');
+    if(nameIdx===-1) return {records:[],error:'CSV must have a "name" (or "full_name") column.'};
+    if(instIdx===-1) return {records:[],error:'CSV must have an "institution" column.'};
+    const records=[]; const errors=[];
+    for(let i=1;i<lines.length;i++){
+      const cols=parseCsvLine(lines[i]);
+      const name=(cols[nameIdx]||'').replace(/^"|"$/g,'').trim();
+      const inst=(cols[instIdx]||'').replace(/^"|"$/g,'').trim();
+      if(!name&&!inst) continue;
+      if(!name){ errors.push(`Row ${i+1}: missing name`); continue; }
+      if(!inst){ errors.push(`Row ${i+1}: "${name}" is missing an institution`); continue; }
+      records.push({full_name:name,institution:inst});
+    }
+    if(errors.length) return {records,error:errors.slice(0,3).join(' · ')+(errors.length>3?` (+${errors.length-3} more)`:'')};
+    return {records,error:''};
+  };
+
+  const parseManualText = text => {
+    const lines=text.trim().split('\n');
+    const records=[]; const errors=[];
+    for(let i=0;i<lines.length;i++){
+      const line=lines[i].trim();
+      if(!line) continue;
+      const commaIdx=line.indexOf(',');
+      if(commaIdx===-1){ errors.push(`Line ${i+1}: use "Name, Institution" format`); continue; }
+      const name=line.slice(0,commaIdx).trim();
+      const inst=line.slice(commaIdx+1).trim();
+      if(!name){ errors.push(`Line ${i+1}: missing name`); continue; }
+      if(!inst){ errors.push(`Line ${i+1}: "${name}" is missing an institution`); continue; }
+      records.push({full_name:name,institution:inst});
+    }
+    if(errors.length) return {records,error:errors.slice(0,3).join(' · ')+(errors.length>3?` (+${errors.length-3} more)`:'')};
+    return {records,error:''};
+  };
+
+  const handleCsvFile = e => {
+    const file=e.target.files[0];
+    if(!file) return;
+    setNlFileName(file.name);
+    const reader=new FileReader();
+    reader.onload=ev=>{
+      const {records,error}=parseCsvText(ev.target.result);
+      setNlParsed(records); setNlParseError(error);
+    };
+    reader.readAsText(file);
+    e.target.value='';
+  };
+
+  const handleManualChange = text => {
+    setNlRawText(text);
+    if(!text.trim()){ setNlParsed([]); setNlParseError(''); return; }
+    const {records,error}=parseManualText(text);
+    setNlParsed(records); setNlParseError(error);
+  };
+
+  /* ── Name Lookup run ── */
+  const runNameLookup = async () => {
+    if(nlParsed.length===0||nlLoading) return;
+    setNlLoading(true); setNlRan(false); setNlResults([]); setNlErrorMsg('');
+    setNlProgress({done:0,total:0,phase:`Looking up ${nlParsed.length} ${nlParsed.length===1?'person':'people'}…`});
+    if(nlEsRef.current){ nlEsRef.current.close(); nlEsRef.current=null; }
+    try {
+      const resp=await fetch('/api/run-names',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({names:nlParsed})});
+      if(!resp.ok){ const err=await resp.json(); setNlErrorMsg(err.error||'Server error'); setNlLoading(false); return; }
+    } catch(e){ setNlErrorMsg('Could not reach server. Is server.py running?'); setNlLoading(false); return; }
+    const es=new EventSource('/api/stream-names'); nlEsRef.current=es;
+    es.onmessage=e=>{
+      const msg=JSON.parse(e.data);
+      if(msg.type==='ping') return;
+      if(msg.type==='faculty'){ setNlResults(prev=>[...prev,msg.data]); setNlProgress({done:msg.completed,total:msg.total,phase:'Enriching…'}); }
+      if(msg.type==='qc_update'){ setNlResults(prev=>prev.map(f=>f.full_name===msg.data.full_name?{...f,qc:msg.data.qc}:f)); }
+      if(msg.type==='done'){ es.close(); nlEsRef.current=null; setNlLoading(false); setNlRan(true); setNlProgress(p=>({...p,phase:'Complete'})); }
+      if(msg.type==='error'){ setNlErrorMsg(msg.message||'Pipeline error'); es.close(); nlEsRef.current=null; setNlLoading(false); }
+    };
+    es.onerror=()=>{ setNlErrorMsg('Stream connection lost.'); es.close(); nlEsRef.current=null; setNlLoading(false); };
+  };
+
   const displayed = useMemo(()=>{
     let r=results;
     if(tableSearch){ const q=tableSearch.toLowerCase(); r=r.filter(f=>(f.full_name||'').toLowerCase().includes(q)||(f.school||'').toLowerCase().includes(q)); }
@@ -903,6 +1022,24 @@ function App() {
   },[results,tableSearch,minH,minGrants,rankFilter,sortCol,sortDir]);
 
   const sort=col=>{ if(sortCol===col) setSortDir(d=>d==='asc'?'desc':'asc'); else{setSortCol(col);setSortDir('asc');} };
+  const nlSort=col=>{ if(nlSortCol===col) setNlSortDir(d=>d==='asc'?'desc':'asc'); else{setNlSortCol(col);setNlSortDir('asc');} };
+
+  const nlDisplayed = useMemo(()=>{
+    let r=nlResults;
+    if(nlTableSearch){ const q=nlTableSearch.toLowerCase(); r=r.filter(f=>(f.full_name||'').toLowerCase().includes(q)||(f.school||'').toLowerCase().includes(q)); }
+    if(nlMinH) r=r.filter(f=>(f.h_index??-1)>=+nlMinH);
+    if(nlMinGrants) r=r.filter(f=>(f.nih_grant_count??0)>=+nlMinGrants);
+    if(nlRankFilter!=='ALL'){
+      const RO={instructor:1,assistant:2,associate:3,professor:4};
+      const tR=t=>{ const s=(t||'').toLowerCase(); if(s.includes('associate')) return 3; if(s.includes('assistant')) return 2; if(s.includes('instructor')) return 1; if(s.includes('professor')) return 4; return 0; };
+      r=r.filter(f=>tR(f.title)>=(RO[nlRankFilter]||0));
+    }
+    return [...r].sort((a,b)=>{
+      let av=a[nlSortCol]??'',bv=b[nlSortCol]??'';
+      if(typeof av==='string'){av=av.toLowerCase();bv=bv.toLowerCase();}
+      return nlSortDir==='asc'?(av<bv?-1:av>bv?1:0):(av>bv?-1:av<bv?1:0);
+    });
+  },[nlResults,nlTableSearch,nlMinH,nlMinGrants,nlRankFilter,nlSortCol,nlSortDir]);
 
   const exportCSV=()=>{
     const hdr=['Name','School','State','Title','H-Index','NIH Grants','NIH Grant Titles','Leadership','Editorial','Societies','Profile URL'];
@@ -919,10 +1056,29 @@ function App() {
     a.click();
   };
 
+  const nlExportCSV=()=>{
+    const hdr=['Name','Institution','Title','H-Index','NIH Grants','NIH Grant Titles','Leadership','Editorial','Societies','Profile URL'];
+    const rows=nlDisplayed.map(f=>{
+      const fmt=arr=>(arr||[]).map(r=>r.role||'').filter(Boolean).join('; ');
+      const gt=[...new Set((f.nih_grant_titles||'').split('|').map(s=>s.trim()).filter(Boolean))].join('; ');
+      return[f.full_name,f.school,f.title||'',f.h_index??'',f.nih_grant_count||0,gt,fmt(f.leadership_roles),fmt(f.editorial_roles),fmt(f.society_roles),f.profile_url||''];
+    });
+    const csv=[hdr,...rows].map(r=>r.map(v=>`"${String(v).replace(/"/g,'""')}"`).join(',')).join('\n');
+    const a=document.createElement('a');
+    a.href=URL.createObjectURL(new Blob([csv],{type:'text/csv'}));
+    a.download='faculty_lookup.csv';
+    a.click();
+  };
+
   const pct=progress.total>0?Math.round((progress.done/progress.total)*100):(loading?5:0);
   const withH=displayed.filter(f=>f.h_index!=null);
   const nihN=displayed.filter(f=>(f.nih_grant_count||0)>0).length;
   const avgH=withH.length?Math.round(withH.reduce((s,f)=>s+(f.h_index||0),0)/withH.length):null;
+
+  const nlPct=nlProgress.total>0?Math.round((nlProgress.done/nlProgress.total)*100):(nlLoading?5:0);
+  const nlWithH=nlDisplayed.filter(f=>f.h_index!=null);
+  const nlNihN=nlDisplayed.filter(f=>(f.nih_grant_count||0)>0).length;
+  const nlAvgH=nlWithH.length?Math.round(nlWithH.reduce((s,f)=>s+(f.h_index||0),0)/nlWithH.length):null;
 
   const inp={width:'100%',padding:'8px 10px',border:'1.5px solid var(--border)',borderRadius:8,fontSize:13,color:'var(--ink)',outline:'none',background:'#fff',transition:'border-color 0.15s, box-shadow 0.15s'};
 
@@ -934,6 +1090,17 @@ function App() {
     }}>
       {label}{col&&<span style={{marginLeft:4,color:sortCol===col?'var(--red)':'var(--border)'}}>
         {sortCol===col?(sortDir==='asc'?'↑':'↓'):'↕'}
+      </span>}
+    </th>
+  );
+  const NlTh=({label,col})=>(
+    <th onClick={()=>col&&nlSort(col)} style={{
+      padding:'10px 14px',textAlign:'left',fontSize:10,fontWeight:700,letterSpacing:'0.09em',
+      textTransform:'uppercase',color:'var(--ink3)',cursor:col?'pointer':'default',whiteSpace:'nowrap',
+      background:'var(--surface)',borderBottom:'1px solid var(--border)',userSelect:'none',
+    }}>
+      {label}{col&&<span style={{marginLeft:4,color:nlSortCol===col?'var(--red)':'var(--border)'}}>
+        {nlSortCol===col?(nlSortDir==='asc'?'↑':'↓'):'↕'}
       </span>}
     </th>
   );
@@ -951,22 +1118,49 @@ function App() {
     <div style={{minHeight:'100vh',background:'var(--bg)',display:'flex',flexDirection:'column'}}>
       {detailFaculty&&<FacultyDetail faculty={detailFaculty} onClose={()=>setDetail(null)}/>}
       {qcModal&&<QcModal faculty={qcModal} onClose={()=>setQcModal(null)}/>}
+      {nlDetail&&<FacultyDetail faculty={nlDetail} onClose={()=>setNlDetail(null)}/>}
+      {nlQcModal&&<QcModal faculty={nlQcModal} onClose={()=>setNlQcModal(null)}/>}
 
       {/* Topbar */}
       <div style={{background:'#fff',borderBottom:'1px solid var(--border-sub)',padding:'0 36px',flexShrink:0}}>
         <div style={{maxWidth:1440,margin:'0 auto',height:48,display:'flex',alignItems:'center',justifyContent:'space-between'}}>
           <span style={{fontFamily:"'Spectral',serif",fontSize:18,fontWeight:600,letterSpacing:'-0.01em',color:'var(--ink)'}}>Faculty Intelligence</span>
           <div style={{display:'flex',alignItems:'center',gap:8}}>
-            <span style={{width:6,height:6,borderRadius:'50%',flexShrink:0,background:loading?'oklch(72% 0.15 80)':'var(--qg-tx)',animation:loading?'pulse 1.4s ease-in-out infinite':'none',transition:'background 0.4s'}}/>
+            <span style={{width:6,height:6,borderRadius:'50%',flexShrink:0,background:(loading||nlLoading)?'oklch(72% 0.15 80)':'var(--qg-tx)',animation:(loading||nlLoading)?'pulse 1.4s ease-in-out infinite':'none',transition:'background 0.4s'}}/>
             <span style={{fontSize:11,color:'var(--ink3)'}}>
-              {loading?`${results.length} enriched…`:ran?`${displayed.length} of ${results.length} shown`:'NIH Reporter · Scopus · LCME · AOA'}
+              {activeTab==='search'
+                ?(loading?`${results.length} enriched…`:ran?`${displayed.length} of ${results.length} shown`:'NIH Reporter · Scopus · LCME · AOA')
+                :(nlLoading?`${nlResults.length} enriched…`:nlRan?`${nlDisplayed.length} of ${nlResults.length} shown`:'NIH Reporter · Scopus · LCME · AOA')
+              }
             </span>
           </div>
         </div>
       </div>
 
+      {/* Tab navigation */}
+      <div style={{background:'#fff',borderBottom:'1px solid var(--border)',flexShrink:0}}>
+        <div style={{maxWidth:1440,margin:'0 auto',padding:'0 36px',display:'flex',gap:0}}>
+          {[['search','School Search'],['lookup','Name Lookup']].map(([t,label])=>(
+            <button key={t} onClick={()=>setActiveTab(t)} style={{
+              padding:'11px 20px',border:'none',
+              borderBottom:activeTab===t?'2px solid var(--red)':'2px solid transparent',
+              background:'none',fontSize:13,fontWeight:activeTab===t?700:400,
+              color:activeTab===t?'var(--red)':'var(--ink2)',
+              cursor:'pointer',transition:'color 0.15s',marginBottom:-1,
+            }}>
+              {label}
+              {t==='search'&&(ran||loading)&&<span style={{marginLeft:6,fontSize:10,fontWeight:700,color:loading?'var(--red-text)':'var(--qg-tx)',background:loading?'var(--red-bg2)':'var(--qg-bg)',padding:'1px 6px',borderRadius:10}}>{loading?'live':`${results.length}`}</span>}
+              {t==='lookup'&&(nlRan||nlLoading)&&<span style={{marginLeft:6,fontSize:10,fontWeight:700,color:nlLoading?'var(--red-text)':'var(--qg-tx)',background:nlLoading?'var(--red-bg2)':'var(--qg-bg)',padding:'1px 6px',borderRadius:10}}>{nlLoading?'live':`${nlResults.length}`}</span>}
+            </button>
+          ))}
+        </div>
+      </div>
+
       {/* Body */}
       <div style={{flex:1,width:'100%',padding:'28px 40px 48px'}}>
+
+        {/* ── SCHOOL SEARCH TAB ── */}
+        {activeTab==='search'&&(<>
         <div style={{display:'flex',justifyContent:hasRun?'flex-start':'center',gap:24,alignItems:'flex-start'}}>
 
           {/* Sidebar */}
@@ -1204,7 +1398,7 @@ function App() {
           )}
         </div>
 
-        {/* Empty state */}
+        {/* Empty state — search tab */}
         {!hasRun&&(
           <div style={{textAlign:'center',marginTop:52,animation:'fadeUp 0.5s 0.1s ease both'}}>
             <div style={{animation:'float 4s ease-in-out infinite'}}>
@@ -1222,6 +1416,297 @@ function App() {
             </div>
           </div>
         )}
+        </>)}
+
+        {/* ── NAME LOOKUP TAB ── */}
+        {activeTab==='lookup'&&(()=>{
+          const nlHasRun=nlLoading||nlResults.length>0||nlRan;
+          const nlCanRun=nlParsed.length>0&&!nlParseError&&!nlLoading;
+          return (
+            <div style={{display:'flex',justifyContent:nlHasRun?'flex-start':'center',gap:24,alignItems:'flex-start'}}>
+
+              {/* Lookup sidebar */}
+              <div style={{flexShrink:0,width:nlHasRun?260:480,transition:'width 0.55s cubic-bezier(0.16,1,0.3,1)'}}>
+                <div style={{position:'sticky',top:24,width:nlHasRun?260:480,transition:'width 0.55s cubic-bezier(0.16,1,0.3,1)'}}>
+
+                  <SLabel>Input method</SLabel>
+                  <Pills value={nlInputMode} onChange={v=>{setNlInputMode(v);setNlParsed([]);setNlParseError('');setNlRawText('');setNlFileName('');}}
+                    options={[['csv','CSV Upload'],['manual','Manual Entry']]}/>
+                  <Divider/>
+
+                  {nlInputMode==='csv'&&(
+                    <>
+                      <SLabel>Upload CSV file</SLabel>
+                      <div style={{fontSize:11,color:'var(--ink3)',marginBottom:8,lineHeight:1.6}}>
+                        Required columns: <b>name</b> (or full_name) and <b>institution</b>
+                      </div>
+                      <label style={{
+                        display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',
+                        gap:6,padding:'20px 12px',border:'2px dashed var(--border)',borderRadius:10,
+                        cursor:'pointer',background:'var(--surface)',transition:'border-color 0.15s, background 0.15s',
+                        textAlign:'center',
+                      }}
+                        onMouseEnter={e=>{e.currentTarget.style.borderColor='var(--red)';e.currentTarget.style.background='var(--red-bg)';}}
+                        onMouseLeave={e=>{e.currentTarget.style.borderColor='var(--border)';e.currentTarget.style.background='var(--surface)';}}
+                      >
+                        <input type="file" accept=".csv,text/csv" style={{display:'none'}} onChange={handleCsvFile}/>
+                        <span style={{fontSize:22}}>📄</span>
+                        <span style={{fontSize:12,fontWeight:600,color:'var(--ink2)'}}>
+                          {nlFileName?nlFileName:'Click to choose a CSV'}
+                        </span>
+                        <span style={{fontSize:11,color:'var(--ink3)'}}>or drag and drop</span>
+                      </label>
+                      {nlFileName&&nlParsed.length>0&&!nlParseError&&(
+                        <div style={{marginTop:8,fontSize:11,color:'var(--qg-tx)',fontWeight:600}}>
+                          ✓ {nlParsed.length} {nlParsed.length===1?'person':'people'} ready
+                        </div>
+                      )}
+                    </>
+                  )}
+
+                  {nlInputMode==='manual'&&(
+                    <>
+                      <SLabel>Enter names</SLabel>
+                      <div style={{fontSize:11,color:'var(--ink3)',marginBottom:6,lineHeight:1.6}}>
+                        One per line: <b>Full Name, Institution</b>
+                      </div>
+                      <textarea
+                        value={nlRawText}
+                        onChange={e=>handleManualChange(e.target.value)}
+                        placeholder={"Jane Smith, Stanford University\nJohn Doe, Harvard Medical School"}
+                        rows={6}
+                        style={{
+                          width:'100%',padding:'9px 10px',border:'1.5px solid var(--border)',borderRadius:8,
+                          fontSize:12,color:'var(--ink)',outline:'none',background:'#fff',
+                          resize:'vertical',fontFamily:'monospace',lineHeight:1.6,
+                          transition:'border-color 0.15s',
+                        }}
+                        onFocus={e=>e.target.style.borderColor='var(--red)'}
+                        onBlur={e=>e.target.style.borderColor='var(--border)'}
+                      />
+                      {nlRawText&&nlParsed.length>0&&!nlParseError&&(
+                        <div style={{marginTop:6,fontSize:11,color:'var(--qg-tx)',fontWeight:600}}>
+                          ✓ {nlParsed.length} {nlParsed.length===1?'person':'people'} ready
+                        </div>
+                      )}
+                    </>
+                  )}
+
+                  {nlParseError&&(
+                    <div style={{marginTop:8,padding:'8px 10px',borderRadius:6,background:'var(--qr-bg)',border:'1px solid var(--qr-bd)',color:'var(--qr-tx)',fontSize:11,fontWeight:500}}>
+                      {nlParseError}
+                    </div>
+                  )}
+
+                  <Divider/>
+
+                  <SLabel>Filters</SLabel>
+                  <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:8,marginBottom:12}}>
+                    <div>
+                      <div style={{fontSize:10,color:'var(--ink3)',marginBottom:5}}>Min H-Index</div>
+                      <input type="number" min="0" value={nlMinH} onChange={e=>setNlMinH(e.target.value)} placeholder="e.g. 10"
+                        style={{width:'100%',padding:'8px 10px',border:'1.5px solid var(--border)',borderRadius:8,fontSize:13,color:'var(--ink)',outline:'none',background:'#fff',transition:'border-color 0.15s'}}
+                        onFocus={e=>e.target.style.borderColor='var(--red)'}
+                        onBlur={e=>e.target.style.borderColor='var(--border)'}/>
+                    </div>
+                    <div>
+                      <div style={{fontSize:10,color:'var(--ink3)',marginBottom:5}}>Min NIH</div>
+                      <input type="number" min="0" value={nlMinGrants} onChange={e=>setNlMinGrants(e.target.value)} placeholder="e.g. 1"
+                        style={{width:'100%',padding:'8px 10px',border:'1.5px solid var(--border)',borderRadius:8,fontSize:13,color:'var(--ink)',outline:'none',background:'#fff',transition:'border-color 0.15s'}}
+                        onFocus={e=>e.target.style.borderColor='var(--red)'}
+                        onBlur={e=>e.target.style.borderColor='var(--border)'}/>
+                    </div>
+                  </div>
+                  <div style={{marginBottom:16}}>
+                    <div style={{fontSize:10,color:'var(--ink3)',marginBottom:6}}>Academic Rank</div>
+                    <Pills value={nlRankFilter} onChange={setNlRankFilter}
+                      options={[['ALL','Any'],['instructor','Instr+'],['assistant','Asst+'],['associate','Assoc+'],['professor','Full']]}/>
+                  </div>
+
+                  {nlErrorMsg&&<div style={{marginBottom:12,padding:'9px 12px',borderRadius:6,background:'var(--qr-bg)',border:'1px solid var(--qr-bd)',color:'var(--qr-tx)',fontSize:12,fontWeight:500}}>{nlErrorMsg}</div>}
+
+                  <button onClick={runNameLookup} disabled={!nlCanRun} style={{
+                    width:'100%',padding:'11px',borderRadius:8,border:'none',
+                    background:nlCanRun?'var(--red)':'var(--surface2)',
+                    color:nlCanRun?'#fff':'var(--ink3)',
+                    fontSize:13,fontWeight:700,letterSpacing:'0.02em',
+                    cursor:nlCanRun?'pointer':'not-allowed',
+                    transition:'background 0.15s, transform 0.12s',
+                    animation:nlCanRun?'glow 2.5s ease-in-out infinite':'none',
+                  }}
+                    onMouseEnter={e=>{ if(nlCanRun){ e.currentTarget.style.background='var(--red-hover)'; e.currentTarget.style.transform='translateY(-2px)'; e.currentTarget.style.animation='none'; e.currentTarget.style.boxShadow='0 8px 24px oklch(50% 0.26 27 / 0.45)'; }}}
+                    onMouseLeave={e=>{ if(nlCanRun){ e.currentTarget.style.background='var(--red)'; e.currentTarget.style.transform='none'; e.currentTarget.style.animation='glow 2.5s ease-in-out infinite'; }}}
+                  >
+                    {nlLoading
+                      ?<span style={{display:'inline-flex',alignItems:'center',gap:8,justifyContent:'center'}}>
+                          <span style={{width:12,height:12,border:'2px solid rgba(255,255,255,0.3)',borderTopColor:'#fff',borderRadius:'50%',animation:'spin 0.75s linear infinite',display:'inline-block'}}/>
+                          Looking up…
+                        </span>
+                      :'Look Up Faculty'
+                    }
+                  </button>
+
+                  {nlLoading&&(
+                    <div style={{marginTop:14,animation:'fadeUp 0.2s ease'}}>
+                      <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:6}}>
+                        <span style={{fontSize:11,color:'var(--ink2)'}}>{nlProgress.phase}</span>
+                        <span style={{fontSize:11,color:'var(--red)',fontWeight:700}}>{nlProgress.total>0?`${nlProgress.done}/${nlProgress.total}`:'…'}</span>
+                      </div>
+                      <div style={{height:2,background:'var(--surface2)',borderRadius:99,overflow:'hidden'}}>
+                        <div style={{height:'100%',background:'var(--red)',width:`${nlPct}%`,transition:'width 0.5s cubic-bezier(0.4,0,0.2,1)',borderRadius:99}}/>
+                      </div>
+                      <div style={{display:'flex',gap:14,marginTop:8}}>
+                        {['Enricher','QC'].map((a,i)=>(
+                          <div key={a} style={{display:'flex',alignItems:'center',gap:4}}>
+                            <div style={{width:5,height:5,borderRadius:'50%',background:nlPct>=(i+1)*50?'var(--red)':nlPct>=i*50+5?'var(--red-bg2)':'var(--border)',transition:'background 0.4s'}}/>
+                            <span style={{fontSize:10,color:'var(--ink3)'}}>{a}</span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {/* Lookup results */}
+              {nlHasRun&&(
+                <div style={{flex:1,minWidth:0,animation:'fadeUp 0.45s 0.2s cubic-bezier(0.16,1,0.3,1) both'}}>
+                  {/* Toolbar */}
+                  <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:12,gap:12,flexWrap:'wrap'}}>
+                    <div style={{display:'flex',alignItems:'baseline',gap:12,flexWrap:'wrap'}}>
+                      <span style={{fontFamily:"'Spectral',serif",fontSize:20,fontWeight:600,color:'var(--ink)'}}>Results</span>
+                      {nlLoading&&<span style={{fontSize:9,fontWeight:700,letterSpacing:'0.10em',textTransform:'uppercase',color:'var(--red-text)',background:'var(--red-bg2)',padding:'2px 8px',borderRadius:20}}>Live</span>}
+                      <div style={{display:'flex',alignItems:'center',gap:0,fontSize:12,color:'var(--ink2)'}}>
+                        <b style={{color:'var(--ink)'}}>{nlDisplayed.length}</b>
+                        <span style={{marginLeft:4}}>shown</span>
+                        {nlResults.length!==nlDisplayed.length&&<span style={{marginLeft:6,color:'var(--ink3)'}}>({nlResults.length-nlDisplayed.length} filtered)</span>}
+                        {nlNihN>0&&<><span style={{display:'inline-block',width:1,height:12,background:'var(--border)',margin:'0 10px'}}/><b style={{color:'var(--ink)'}}>{nlNihN}</b><span style={{marginLeft:4}}>NIH-funded</span></>}
+                        {nlAvgH!==null&&<><span style={{display:'inline-block',width:1,height:12,background:'var(--border)',margin:'0 10px'}}/><span>avg H-index </span><b style={{color:'var(--ink)',marginLeft:4}}>{nlAvgH}</b></>}
+                      </div>
+                    </div>
+                    <div style={{display:'flex',gap:8,alignItems:'center'}}>
+                      <div style={{position:'relative'}}>
+                        <input value={nlTableSearch} onChange={e=>setNlTableSearch(e.target.value)} placeholder="Search results…"
+                          style={{padding:'7px 12px 7px 30px',border:'1.5px solid var(--border)',borderRadius:8,fontSize:12,outline:'none',color:'var(--ink)',width:180,background:'#fff',transition:'border-color 0.15s'}}
+                          onFocus={e=>e.target.style.borderColor='var(--red)'}
+                          onBlur={e=>e.target.style.borderColor='var(--border)'}/>
+                        <span style={{position:'absolute',left:10,top:'50%',transform:'translateY(-50%)',fontSize:13,color:'var(--ink3)',pointerEvents:'none'}}>⌕</span>
+                      </div>
+                      {!nlLoading&&nlRan&&(
+                        <button onClick={nlExportCSV} style={{padding:'7px 13px',border:'1px solid var(--border)',borderRadius:8,background:'#fff',fontSize:12,fontWeight:600,cursor:'pointer',color:'var(--ink2)',transition:'all 0.15s'}}
+                          onMouseEnter={e=>{ e.currentTarget.style.borderColor='var(--red)'; e.currentTarget.style.color='var(--red)'; e.currentTarget.style.transform='translateY(-1px)'; }}
+                          onMouseLeave={e=>{ e.currentTarget.style.borderColor='var(--border)'; e.currentTarget.style.color='var(--ink2)'; e.currentTarget.style.transform='none'; }}
+                        >↓ Export CSV</button>
+                      )}
+                    </div>
+                  </div>
+                  {nlDisplayed.length>0&&(
+                    <div style={{fontSize:11,color:'var(--ink3)',marginBottom:8}}>Click any name to view full profile</div>
+                  )}
+                  <div style={{background:'#fff',border:'1px solid var(--border)',borderRadius:10,overflow:'hidden'}}>
+                    <table style={{width:'100%',borderCollapse:'collapse',tableLayout:'fixed'}}>
+                      <colgroup>
+                        <col style={{width:'16%'}}/><col style={{width:'19%'}}/><col style={{width:'16%'}}/>
+                        <col style={{width:'7%'}}/><col style={{width:'14%'}}/><col style={{width:'20%'}}/><col style={{width:'8%'}}/>
+                      </colgroup>
+                      <thead>
+                        <tr>
+                          <NlTh label="Name"        col="full_name"/>
+                          <NlTh label="Institution"  col="school"/>
+                          <NlTh label="Rank"         col="title"/>
+                          <NlTh label="H-Index"      col="h_index"/>
+                          <NlTh label="NIH Grants"   col="nih_grant_count"/>
+                          <NlTh label="Roles"        col={null}/>
+                          <NlTh label="QC"           col={null}/>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {nlDisplayed.map((f,i)=>{
+                          const h=f.h_index;
+                          const parts=rolesSummary(f);
+                          const cell={padding:'11px 14px',borderBottom:'1px solid var(--border-sub)',verticalAlign:'top'};
+                          return (
+                            <tr key={f.full_name+i} className="tr-hover" onClick={()=>setNlDetail(f)}
+                              style={{animation:`fadeUp 0.3s ${Math.min(i,14)*22}ms cubic-bezier(0.16,1,0.3,1) both`,cursor:'pointer'}}>
+                              <td style={cell}>
+                                <span className="name-cell" style={{fontFamily:"'Spectral',serif",fontStyle:'italic',fontSize:14,color:'var(--ink)',lineHeight:1.3,transition:'color 0.15s'}}>{f.full_name}</span>
+                                {f.profile_url&&(
+                                  <a href={f.profile_url} target="_blank" rel="noreferrer" onClick={e=>e.stopPropagation()}
+                                    style={{display:'block',fontSize:10,color:'var(--ink3)',marginTop:2,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap',textDecoration:'none'}}
+                                    onMouseEnter={e=>e.target.style.color='var(--red)'} onMouseLeave={e=>e.target.style.color='var(--ink3)'}>
+                                    ↗ profile
+                                  </a>
+                                )}
+                              </td>
+                              <td style={cell}>
+                                <div style={{fontSize:12,color:'var(--ink)',fontWeight:500,lineHeight:1.4}}>{f.school||<span style={{color:'var(--ink3)'}}>—</span>}</div>
+                              </td>
+                              <td style={{...cell,overflow:'hidden'}}>
+                                <div style={{fontSize:11,color:'var(--ink2)',lineHeight:1.4,overflow:'hidden',display:'-webkit-box',WebkitLineClamp:3,WebkitBoxOrient:'vertical'}}>
+                                  {f.title||<span style={{color:'var(--ink3)'}}>—</span>}
+                                </div>
+                              </td>
+                              <td style={{...cell,textAlign:'center'}}>
+                                {h!=null
+                                  ?<span style={{fontFamily:"'Spectral',serif",fontSize:18,fontWeight:600,color:h>=30?'var(--qg-tx)':h>=15?'var(--qy-tx)':'var(--ink2)'}}>{h}</span>
+                                  :<span style={{color:'var(--ink3)',fontSize:13}}>—</span>
+                                }
+                              </td>
+                              <td style={cell}>
+                                {(f.nih_grant_count||0)>0?(()=>{
+                                  const titles=(f.nih_grant_titles||'').split('|').map(s=>s.trim()).filter(Boolean);
+                                  const first=titles[0]||'';
+                                  return (
+                                    <div>
+                                      <span style={{fontFamily:"'Spectral',serif",fontSize:16,fontWeight:600,color:'var(--red)'}}>{f.nih_grant_count}</span>
+                                      {first&&<div style={{fontSize:10,color:'var(--ink2)',marginTop:2,lineHeight:1.4,overflow:'hidden',display:'-webkit-box',WebkitLineClamp:2,WebkitBoxOrient:'vertical'}}>{first}</div>}
+                                    </div>
+                                  );
+                                })():<span style={{color:'var(--ink3)',fontSize:13}}>—</span>}
+                              </td>
+                              <td style={cell}>
+                                {parts.length>0
+                                  ?<div style={{display:'flex',flexDirection:'column',gap:3}}>
+                                      {parts.map((p,j)=>(
+                                        <span key={j} style={{display:'inline-block',fontSize:10,fontWeight:600,color:'var(--red-text)',background:'var(--red-bg)',padding:'2px 7px',borderRadius:10,border:'1px solid var(--red-bg2)',width:'fit-content'}}>{p}</span>
+                                      ))}
+                                    </div>
+                                  :<span style={{color:'var(--ink3)',fontSize:12}}>—</span>
+                                }
+                              </td>
+                              <td style={{...cell,textAlign:'center'}}>
+                                <QcBadge overall={(f.qc||{}).overall} onClick={e=>{ e.stopPropagation(); setNlQcModal(f); }}/>
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                    {nlDisplayed.length===0&&(
+                      <div style={{padding:'48px 0',textAlign:'center',color:'var(--ink3)',fontSize:13}}>No results match current filters.</div>
+                    )}
+                  </div>
+                </div>
+              )}
+
+              {/* Empty state — lookup tab */}
+              {!nlHasRun&&(
+                <div style={{textAlign:'center',marginTop:52,animation:'fadeUp 0.5s 0.1s ease both'}}>
+                  <div style={{animation:'float 4s ease-in-out infinite'}}>
+                    <div style={{fontFamily:"'Spectral',serif",fontStyle:'italic',fontSize:28,color:'var(--ink3)',letterSpacing:'-0.01em',marginBottom:10}}>
+                      Upload or paste names
+                    </div>
+                    <div style={{fontSize:13,color:'var(--ink3)',lineHeight:1.7}}>
+                      Provide a CSV or type names with institutions,<br/>then run enrichment.
+                    </div>
+                  </div>
+                </div>
+              )}
+
+            </div>
+          );
+        })()}
+
       </div>
 
       {/* Footer */}

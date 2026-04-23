@@ -67,6 +67,10 @@ _run_lock   = threading.Lock()
 _run_queue: queue.Queue | None = None
 _pipeline_running = False
 
+_names_run_lock = threading.Lock()
+_names_run_queue: queue.Queue | None = None
+_names_pipeline_running = False
+
 
 def _make_sse(payload: dict) -> str:
     return f"data: {json.dumps(payload)}\n\n"
@@ -133,6 +137,97 @@ def stream():
     def generate():
         if q is None:
             yield _make_sse({"type": "error", "message": "No pipeline running"})
+            return
+        while True:
+            try:
+                msg = q.get(timeout=30)
+                yield _make_sse(msg)
+                if msg["type"] in ("done", "error"):
+                    break
+            except queue.Empty:
+                yield _make_sse({"type": "ping"})
+
+    return Response(
+        generate(),
+        mimetype="text/event-stream",
+        headers={
+            "Cache-Control":    "no-cache",
+            "X-Accel-Buffering": "no",
+            "Connection":       "keep-alive",
+        },
+    )
+
+
+@app.route("/api/run-names", methods=["POST"])
+def start_names_run():
+    global _names_run_queue, _names_pipeline_running
+
+    with _names_run_lock:
+        if _names_pipeline_running:
+            return jsonify({"error": "Names pipeline already running"}), 409
+        _names_pipeline_running = True
+
+    data  = request.json or {}
+    names = data.get("names") or []
+
+    records = [
+        {
+            "full_name":   n.get("full_name", "").strip(),
+            "title":       None,
+            "subspecialty": None,
+            "email":       None,
+            "profile_url": None,
+            "school":      n.get("institution", "").strip(),
+        }
+        for n in names
+        if n.get("full_name", "").strip() and n.get("institution", "").strip()
+    ]
+
+    if not records:
+        _names_pipeline_running = False
+        return jsonify({"error": "No valid name + institution pairs provided"}), 400
+
+    _names_run_queue = queue.Queue()
+
+    def on_enriched(faculty_record: dict, completed: int, total: int):
+        _names_run_queue.put({
+            "type":      "faculty",
+            "data":      faculty_record,
+            "completed": completed,
+            "total":     total,
+        })
+
+    def on_qc_complete(faculty_record: dict):
+        _names_run_queue.put({
+            "type": "qc_update",
+            "data": faculty_record,
+        })
+
+    def run():
+        global _names_pipeline_running
+        try:
+            faculty_search.run_pipeline_from_records(
+                records,
+                on_enriched=on_enriched,
+                on_qc_complete=on_qc_complete,
+            )
+        except Exception as exc:
+            _names_run_queue.put({"type": "error", "message": str(exc)})
+        finally:
+            _names_run_queue.put({"type": "done"})
+            _names_pipeline_running = False
+
+    threading.Thread(target=run, daemon=True).start()
+    return jsonify({"status": "started"})
+
+
+@app.route("/api/stream-names")
+def stream_names():
+    q = _names_run_queue
+
+    def generate():
+        if q is None:
+            yield _make_sse({"type": "error", "message": "No names pipeline running"})
             return
         while True:
             try:

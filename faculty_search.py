@@ -266,7 +266,7 @@ If a field is not available, use null.
         print(f"  [!] Scraper failed for {school_name}: {e}")
 
     # Deduplicate
-    _EXCLUDE_TITLE_KEYWORDS = ("emeritus", "by courtesy", "courtesy")
+    _EXCLUDE_TITLE_KEYWORDS = ("emeritus", "emerita", "by courtesy", "courtesy")
 
     def _is_excluded(f: dict) -> bool:
         title = (f.get("title") or "").lower()
@@ -655,6 +655,47 @@ def generate_faculty_summary(record: dict) -> str:
 # MAIN PIPELINE
 # ─────────────────────────────────────────────
 
+def run_pipeline_from_records(records, on_enriched=None, on_qc_complete=None):
+    """Run Agent 2 (enrichment) + Agent 3 (QC) on a pre-built list of faculty records.
+
+    Records must have at minimum: full_name, school.
+    Returns the final QC'd list.
+    """
+    observe.start()
+    if not records:
+        print("\n[!] No records provided.")
+        return []
+
+    _enrich_start = time.time()
+    n = len(records)
+    print(f"\n[Agent 2] Enriching {n} faculty profiles ({MAX_WORKERS} workers)...")
+    enriched = [None] * n
+    _print_lock = threading.Lock()
+
+    with ThreadPoolExecutor(max_workers=MAX_WORKERS) as executor:
+        futures = {executor.submit(agent2_enrich, f): i for i, f in enumerate(records)}
+        for completed, future in enumerate(as_completed(futures), 1):
+            idx = futures[future]
+            result = future.result()
+            result["summary"] = generate_faculty_summary(result)
+            enriched[idx] = result
+            with _print_lock:
+                print(f"  [Progress] {completed}/{n} — {result.get('full_name', 'Unknown')}")
+            if on_enriched:
+                on_enriched(result, completed, n)
+
+    _enrich_elapsed = time.time() - _enrich_start
+    print(f"\n[Timing] Enrichment: {_enrich_elapsed:.1f}s for {n} faculty ({_enrich_elapsed/n:.1f}s avg)")
+
+    final = agent3_qc(enriched)
+
+    if on_qc_complete:
+        for record in final:
+            on_qc_complete(record)
+
+    return final
+
+
 def run_pipeline(schools=None, discipline=None, on_enriched=None, on_qc_complete=None):
     t_start = time.time()
     observe.start()
@@ -689,33 +730,7 @@ def run_pipeline(schools=None, discipline=None, on_enriched=None, on_qc_complete
         print("\n[!] No faculty found. Check your API key and try again.")
         return
 
-    _enrich_start = time.time()
-    print(f"\n[Agent 2] Enriching {len(deduped)} faculty profiles ({MAX_WORKERS} workers)...")
-    enriched = [None] * len(deduped)
-    _print_lock = threading.Lock()
-
-    with ThreadPoolExecutor(max_workers=MAX_WORKERS) as executor:
-        futures = {executor.submit(agent2_enrich, f): i for i, f in enumerate(deduped)}
-        for completed, future in enumerate(as_completed(futures), 1):
-            idx = futures[future]
-            result = future.result()
-            result["summary"] = generate_faculty_summary(result)
-            enriched[idx] = result
-            with _print_lock:
-                print(f"  [Progress] {completed}/{len(deduped)} — {result.get('full_name', 'Unknown')}")
-            if on_enriched:
-                on_enriched(result, completed, len(deduped))
-
-    _enrich_elapsed = time.time() - _enrich_start
-    print(f"\n[Timing] Enrichment phase: {_enrich_elapsed:.1f}s for {len(deduped)} faculty ({_enrich_elapsed/len(deduped):.1f}s avg per faculty)")
-
-    final = agent3_qc(enriched)
-    # summaries already generated per-faculty in the enrichment loop above
-
-    # Push QC results back to the UI now that all records have qc attached
-    if on_qc_complete:
-        for record in final:
-            on_qc_complete(record)
+    final = run_pipeline_from_records(deduped, on_enriched=on_enriched, on_qc_complete=on_qc_complete)
 
     # Flatten nested qc dict into top-level columns for the CSV
     for record in final:
