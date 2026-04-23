@@ -5,6 +5,7 @@ Use ReplayProviders for tests.
 import time
 import threading
 import re
+from pathlib import Path
 from rapidfuzz import fuzz
 import json
 import requests
@@ -37,6 +38,19 @@ _INSTITUTION_NIH_NAMES: dict[str, list[str]] = {
     "Emory University School of Medicine / Children's Healthcare of Atlanta":          ["EMORY UNIVERSITY", "CHILDREN'S HEALTHCARE OF ATLANTA"],
     "University of Florida College of Medicine":                                       ["UNIVERSITY OF FLORIDA"],
     "Ohio State University College of Medicine / Nationwide Children's":               ["OHIO STATE UNIVERSITY", "NATIONWIDE CHILDREN"],
+    "UC San Diego School of Medicine / Rady Children's Hospital":                      ["UNIVERSITY OF CALIFORNIA SAN DIEGO", "RADY CHILDREN"],
+    "University of Pittsburgh School of Medicine / UPMC Children's Hospital":          ["UNIVERSITY OF PITTSBURGH", "UPMC", "CHILDREN'S HOSPITAL OF PITTSBURGH"],
+    "David Geffen School of Medicine at UCLA / Mattel Children's Hospital":            ["UNIVERSITY OF CALIFORNIA LOS ANGELES", "UCLA", "MATTEL CHILDREN"],
+    "Vanderbilt University School of Medicine / Monroe Carell Jr. Children's":         ["VANDERBILT UNIVERSITY", "MONROE CARELL"],
+    "Medical University of South Carolina":                                            ["MEDICAL UNIVERSITY OF SOUTH CAROLINA", "MUSC"],
+    "UT Southwestern Medical Center / Children's Medical Center Dallas":               ["UNIVERSITY OF TEXAS SOUTHWESTERN", "UT SOUTHWESTERN", "CHILDREN'S MEDICAL CENTER DALLAS"],
+    "Dell Medical School, University of Texas at Austin / Dell Children's":            ["UNIVERSITY OF TEXAS AT AUSTIN", "DELL CHILDREN"],
+    "University of Utah School of Medicine / Intermountain Primary Children's":        ["UNIVERSITY OF UTAH", "INTERMOUNTAIN", "PRIMARY CHILDREN"],
+    "University of Missouri-Kansas City School of Medicine / Children's Mercy":        ["UNIVERSITY OF MISSOURI KANSAS CITY", "CHILDREN'S MERCY"],
+    "Nemours Children's Health":                                                       ["NEMOURS", "ALFRED I. DUPONT"],
+    "Atrium Health / Levine Children's Hospital":                                      ["ATRIUM HEALTH", "LEVINE CHILDREN", "CAROLINAS MEDICAL"],
+    "Mayo Clinic Alix School of Medicine":                                             ["MAYO CLINIC", "MAYO FOUNDATION"],
+    "Cleveland Clinic Lerner College of Medicine":                                     ["CLEVELAND CLINIC", "LERNER COLLEGE"],
 }
 
 _INSTITUTION_KEYWORDS: dict[str, str] = {
@@ -61,6 +75,20 @@ _INSTITUTION_KEYWORDS: dict[str, str] = {
     "Emory University School of Medicine / Children's Healthcare of Atlanta":          "emory",
     "University of Florida College of Medicine":                                       "florida",
     "Ohio State University College of Medicine / Nationwide Children's":               "ohio state",
+    "UC San Diego School of Medicine / Rady Children's Hospital":                      "rady children",
+    "University of Pittsburgh School of Medicine / UPMC Children's Hospital":          "pittsburgh",
+    "David Geffen School of Medicine at UCLA / Mattel Children's Hospital":            "los angeles",
+    "Vanderbilt University School of Medicine / Monroe Carell Jr. Children's":         "vanderbilt",
+    "Medical University of South Carolina":                                            "south carolina",
+    "UT Southwestern Medical Center / Children's Medical Center Dallas":               "southwestern",
+    "Dell Medical School, University of Texas at Austin / Dell Children's":            "texas austin",
+    "University of Utah School of Medicine / Intermountain Primary Children's":        "utah",
+    "University of Missouri-Kansas City School of Medicine / Children's Mercy":        "children's mercy",
+    "Nemours Children's Health":                                                       "nemours",
+    "Atrium Health / Levine Children's Hospital":                                      "atrium",
+    "Mayo Clinic Alix School of Medicine":                                             "mayo",
+    "Cleveland Clinic Lerner College of Medicine":                                     "cleveland clinic",
+    "Children's National Hospital / George Washington University":                     "george washington",
 }
 
 _CREDENTIAL_SUFFIXES = frozenset(
@@ -69,8 +97,20 @@ _CREDENTIAL_SUFFIXES = frozenset(
 
 _LIVE_MODEL = "gpt-4o"
 
+_ROLES_DIR = Path(__file__).parent.parent / "data" / "roles"
+
+
+def _load_discipline_context(discipline: str) -> str:
+    filename = discipline.lower().replace(" ", "_").replace("/", "_") + ".md"
+    path = _ROLES_DIR / filename
+    if not path.exists():
+        return ""
+    content = path.read_text().strip()
+    return f"--- Specialty guidance for {discipline} ---\n{content}\n---\n\n"
+
+
 _ROLES_PROMPT = """\
-Search the web for the professional roles and service activities of {name} at {school}.
+{discipline_context}Search the web for the professional roles and service activities of {name} at {school}.
 
 Include ONLY roles that involve active service or responsibility beyond their faculty appointment:
 - Editorial board positions (e.g. "Associate Editor, Diabetes Care")
@@ -508,11 +548,12 @@ class LiveNihProvider(NihProvider):
 
 
 class LiveRolesProvider(RolesProvider):
-    def __init__(self, openai_client):
+    def __init__(self, openai_client, discipline: str = ""):
         self._client = openai_client
+        self._discipline_context = _load_discipline_context(discipline) if discipline else ""
 
     def get_roles(self, name: str, school: str, profile_url: str = "") -> list[RoleEvidence]:
-        prompt = _ROLES_PROMPT.format(name=name, school=school)
+        prompt = _ROLES_PROMPT.format(name=name, school=school, discipline_context=self._discipline_context)
         response = self._client.responses.create(
             model=_LIVE_MODEL,
             tools=[{"type": "web_search_preview"}],

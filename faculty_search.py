@@ -68,6 +68,14 @@ INSTITUTION_KEYWORDS: dict[str, str] = {
     "Emory University School of Medicine / Children's Healthcare of Atlanta":          "emory",
     "University of Florida College of Medicine":                                       "florida",
     "Ohio State University College of Medicine / Nationwide Children's":               "ohio state",
+    "UC San Diego School of Medicine / Rady Children's Hospital":                      "san diego",
+    "University of Pittsburgh School of Medicine / UPMC Children's Hospital":          "pittsburgh",
+    "David Geffen School of Medicine at UCLA / Mattel Children's Hospital":            "ucla",
+    "Vanderbilt University School of Medicine / Monroe Carell Jr. Children's":         "vanderbilt",
+    "Medical University of South Carolina":                                            "south carolina",
+    "UT Southwestern Medical Center / Children's Medical Center Dallas":               "southwestern",
+    "Dell Medical School, University of Texas at Austin / Dell Children's":            "texas austin",
+    "University of Utah School of Medicine / Intermountain Primary Children's":        "utah",
 }
 
 
@@ -104,7 +112,19 @@ def responses_web_search(prompt: str) -> str:
 
 def parse_json(raw: str) -> any:
     clean = raw.strip().removeprefix("```json").removeprefix("```").removesuffix("```").strip()
-    return json.loads(clean)
+    try:
+        return json.loads(clean)
+    except json.JSONDecodeError:
+        # Response may be truncated — extract the longest valid JSON array prefix
+        start = clean.find("[")
+        if start == -1:
+            return []
+        for end in range(len(clean), start, -1):
+            try:
+                return json.loads(clean[start:end])
+            except json.JSONDecodeError:
+                continue
+        return []
 
 
 # ─────────────────────────────────────────────
@@ -219,16 +239,16 @@ def get_scopus_hindex(full_name: str, school: str) -> int | None:
 _scraper_provider = GenericFacultyScraper()
 
 
-def agent1_scrape(school_name: str, scraper=None) -> list[dict]:
+def agent1_scrape(school_name: str, scraper=None, discipline: str = DISCIPLINE) -> list[dict]:
     t0 = time.time()
-    observe.log("agent1_start", school=school_name, discipline=DISCIPLINE)
-    print(f"\n[Agent 1] Finding {school_name} {DISCIPLINE} faculty...")
+    observe.log("agent1_start", school=school_name, discipline=discipline)
+    print(f"\n[Agent 1] Finding {school_name} {discipline} faculty...")
 
     provider = scraper or _scraper_provider
     all_faculty: list[dict] = []
 
     try:
-        records = provider.get_faculty(school_name, DISCIPLINE)
+        records = provider.get_faculty(school_name, discipline)
         all_faculty.extend(records)
         print(f"  -> Found {len(records)} faculty (Playwright + GPT-4o HTML extraction)")
     except ValueError:
@@ -237,7 +257,7 @@ def agent1_scrape(school_name: str, scraper=None) -> list[dict]:
         prompt = f"""
 You are a research assistant building a faculty recruitment database.
 
-Search the web and find ALL {DISCIPLINE} faculty at {school_name} School of Medicine.
+Search the web and find ALL {discipline} faculty at {school_name} School of Medicine.
 Look at their official faculty directory page.
 
 For each faculty member, extract:
@@ -655,7 +675,7 @@ def generate_faculty_summary(record: dict) -> str:
 # MAIN PIPELINE
 # ─────────────────────────────────────────────
 
-def run_pipeline_from_records(records, on_enriched=None, on_qc_complete=None):
+def run_pipeline_from_records(records, on_enriched=None, on_qc_complete=None, roles_provider=None):
     """Run Agent 2 (enrichment) + Agent 3 (QC) on a pre-built list of faculty records.
 
     Records must have at minimum: full_name, school.
@@ -673,7 +693,7 @@ def run_pipeline_from_records(records, on_enriched=None, on_qc_complete=None):
     _print_lock = threading.Lock()
 
     with ThreadPoolExecutor(max_workers=MAX_WORKERS) as executor:
-        futures = {executor.submit(agent2_enrich, f): i for i, f in enumerate(records)}
+        futures = {executor.submit(agent2_enrich, f, roles_provider=roles_provider): i for i, f in enumerate(records)}
         for completed, future in enumerate(as_completed(futures), 1):
             idx = futures[future]
             result = future.result()
@@ -708,10 +728,12 @@ def run_pipeline(schools=None, discipline=None, on_enriched=None, on_qc_complete
         print("Warning: SCOPUS_API_KEY not set — H-index will be skipped.")
         print("Run: export SCOPUS_API_KEY='your-scopus-key'")
 
+    _roles_provider = LiveRolesProvider(client, discipline=_discipline)
+
     all_faculty = []
 
     for school in _schools:
-        faculty = agent1_scrape(school)
+        faculty = agent1_scrape(school, discipline=_discipline)
         all_faculty.extend(faculty)
         time.sleep(1)
 
@@ -730,7 +752,7 @@ def run_pipeline(schools=None, discipline=None, on_enriched=None, on_qc_complete
         print("\n[!] No faculty found. Check your API key and try again.")
         return
 
-    final = run_pipeline_from_records(deduped, on_enriched=on_enriched, on_qc_complete=on_qc_complete)
+    final = run_pipeline_from_records(deduped, on_enriched=on_enriched, on_qc_complete=on_qc_complete, roles_provider=_roles_provider)
 
     # Flatten nested qc dict into top-level columns for the CSV
     for record in final:

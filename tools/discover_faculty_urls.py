@@ -56,6 +56,14 @@ TOP_10_MED_SCHOOLS: list[dict] = [
     {"name": "Emory University School of Medicine / Children's Healthcare of Atlanta", "city": "Atlanta",       "state": "GA"},
     {"name": "University of Florida College of Medicine",                              "city": "Gainesville",   "state": "FL"},
     {"name": "Ohio State University College of Medicine / Nationwide Children's",      "city": "Columbus",      "state": "OH"},
+    {"name": "UC San Diego School of Medicine / Rady Children's Hospital",            "city": "San Diego",     "state": "CA"},
+    {"name": "University of Pittsburgh School of Medicine / UPMC Children's Hospital","city": "Pittsburgh",    "state": "PA"},
+    {"name": "David Geffen School of Medicine at UCLA / Mattel Children's Hospital",  "city": "Los Angeles",   "state": "CA"},
+    {"name": "Vanderbilt University School of Medicine / Monroe Carell Jr. Children's","city": "Nashville",    "state": "TN"},
+    {"name": "Medical University of South Carolina",                                   "city": "Charleston",    "state": "SC"},
+    {"name": "UT Southwestern Medical Center / Children's Medical Center Dallas",     "city": "Dallas",        "state": "TX"},
+    {"name": "Dell Medical School, University of Texas at Austin / Dell Children's",  "city": "Austin",        "state": "TX"},
+    {"name": "University of Utah School of Medicine / Intermountain Primary Children's","city": "Salt Lake City","state": "UT"},
 ]
 
 _HEADERS = {

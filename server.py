@@ -55,6 +55,28 @@ _SCHOOL_NAME_MAP: dict[str, str] = {
     "Children's Hospital Los Angeles":                                        "Keck School of Medicine USC / Children's Hospital Los Angeles",
     "Children's Hospital Colorado":                                           "University of Colorado School of Medicine / Children's Hospital Colorado",
     "NIH / NICHD":                                                            "NIH National Institute of Child Health and Human Development (NICHD)",
+    # Pediatric cardiology hospital names
+    "Boston Children's Hospital":                                             "Harvard Medical School",
+    "Children's Hospital of Philadelphia":                                    "University of Pennsylvania Perelman School of Medicine",
+    "Rady Children's Hospital":                                               "UC San Diego School of Medicine / Rady Children's Hospital",
+    "Duke Children's Hospital and Health Center":                             "Duke University School of Medicine",
+    "Cleveland Clinic Children's":                                            "Cleveland Clinic Lerner College of Medicine",
+    "New York-Presbyterian Children's Hospital":                              "Columbia University Vagelos College of Physicians and Surgeons",
+    "UPMC Children's Hospital of Pittsburgh":                                 "University of Pittsburgh School of Medicine / UPMC Children's Hospital",
+    "Lucile Packard Children's Hospital Stanford":                            "Stanford University School of Medicine",
+    "Johns Hopkins Children's Center":                                        "Johns Hopkins School of Medicine",
+    "C.S. Mott Children's Hospital":                                          "University of Michigan Medical School",
+    "UCSF Benioff Children's Hospitals":                                      "University of California San Francisco School of Medicine",
+    "UCLA Mattel Children's Hospital":                                        "David Geffen School of Medicine at UCLA / Mattel Children's Hospital",
+    "Monroe Carell Jr. Children's Hospital at Vanderbilt":                    "Vanderbilt University School of Medicine / Monroe Carell Jr. Children's",
+    "Children's Healthcare of Atlanta":                                       "Emory University School of Medicine / Children's Healthcare of Atlanta",
+    "MUSC Children's Heart Program":                                          "Medical University of South Carolina",
+    "Levine Children's Hospital":                                             "Atrium Health / Levine Children's Hospital",
+    "Children's Medical Center Dallas":                                       "UT Southwestern Medical Center / Children's Medical Center Dallas",
+    "Dell Children's Medical Center":                                         "Dell Medical School, University of Texas at Austin / Dell Children's",
+    "Intermountain Primary Children's Hospital":                              "University of Utah School of Medicine / Intermountain Primary Children's",
+    "Children's Mercy Kansas City":                                           "University of Missouri-Kansas City School of Medicine / Children's Mercy",
+    "Nemours Children's Hospital":                                            "Nemours Children's Health",
 }
 
 
