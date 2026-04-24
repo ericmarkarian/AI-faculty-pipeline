@@ -184,13 +184,46 @@ class GenericFacultyScraper(ScraperProvider):
         self._delay = request_delay
         self._client = OpenAI(api_key=os.environ.get("OPENAI_API_KEY"))
 
+    def _affiliated_hospitals(self, school: str) -> list[str]:
+        """Return affiliated hospitals for a school from the xlsx lookup table."""
+        try:
+            import pandas as pd
+            xlsx_path = Path(__file__).parent.parent / "medical_schools_lookup.xlsx"
+            df = pd.read_excel(xlsx_path, sheet_name=0)
+            mask = df["School Name"].str.strip().str.lower() == school.strip().lower()
+            row = df[mask]
+            if row.empty:
+                return []
+            hospitals = []
+            primary = str(row.iloc[0].get("Primary Teaching Hospital", "") or "").strip()
+            if primary and primary.lower() != "nan":
+                hospitals.append(primary)
+            affiliated = str(row.iloc[0].get("Major Affiliated Hospitals / Health Systems", "") or "").strip()
+            if affiliated and affiliated.lower() != "nan":
+                hospitals += [h.strip() for h in affiliated.split(";") if h.strip()]
+            return hospitals
+        except Exception:
+            return []
+
     def _discover_url(self, school: str, discipline: str) -> str | None:
         """Ask GPT-4o with web search to find the faculty directory URL, then cache it."""
         print(f"    [GenericScraper] Discovering URL for {school!r} / {discipline!r} via web search...")
+
+        hospitals = self._affiliated_hospitals(school)
+        hospital_hint = ""
+        if hospitals:
+            hospital_list = "; ".join(hospitals)
+            hospital_hint = (
+                f" Note: {discipline} faculty at {school} may be listed under an affiliated "
+                f"hospital rather than the medical school itself. Affiliated hospitals include: "
+                f"{hospital_list}. Search these sites if the medical school site has no directory."
+            )
+
         prompt = (
             f"Find the exact URL of the official faculty directory page for the {discipline} "
             f"division at {school}. The page must list individual faculty members with names "
-            f"and titles — not a department homepage or research page. Must be publicly accessible. "
+            f"and titles — not a department homepage or research page. Must be publicly accessible."
+            f"{hospital_hint} "
             f"Return ONLY a JSON object: {{\"url\": \"<url or null>\", \"notes\": \"<brief reason>\"}}"
         )
         try:

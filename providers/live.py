@@ -436,6 +436,24 @@ def _nih_fetch_all_by_profile(profile_id: int) -> list[dict]:
     return all_results
 
 
+def _nih_recent_org(profile_id: int) -> str:
+    """Return the org_name from the most recent grant for this PI — best proxy for current institution."""
+    payload = {
+        "criteria": {"pi_profile_ids": [profile_id]},
+        "fields": ["fiscal_year", "organization"],
+        "limit": 1,
+        "offset": 0,
+        "sort_field": "fiscal_year",
+        "sort_order": "desc",
+    }
+    r = requests.post(_NIH_SEARCH_URL, json=payload, timeout=20)
+    r.raise_for_status()
+    results = r.json().get("results", [])
+    if not results:
+        return ""
+    return (results[0].get("organization") or {}).get("org_name", "").lower()
+
+
 class LiveNihProvider(NihProvider):
     def get_grants(self, name: str, school: str) -> list[Grant]:
         """
@@ -477,8 +495,29 @@ class LiveNihProvider(NihProvider):
 
         print(f"      [NIH] Name search '{first_name} {last_name}' → {len(results)} candidate grant(s)")
 
-        # Step 3 — build per-profile scoring map
-        # profile_id → {pi_name, name_score, orgs, inst_hit}
+        # Step 3 — score each unique PI profile
+        # name_score: fuzzy full-name match, first + last weighted equally
+        # inst_score: 1.0  confirmed — at least one grant org matches a target alias
+        #             0.3  neutral   — grants at unknown orgs, or no grants at all
+        #             0.0  mismatch  — grants confirmed at a different known institution
+        #                             BUT only penalised when multiple profiles exist for
+        #                             this name (i.e. genuinely different people).
+        #                             A single unique profile that's at another institution
+        #                             is treated as 0.3 (person likely moved).
+        all_known_aliases = _load_xlsx_aliases()
+
+        def _raw_inst_score(orgs: set) -> float:
+            if not orgs:
+                return 0.3
+            for org in orgs:
+                if any(alias in org for alias in aliases):
+                    return 1.0
+            for org in orgs:
+                for other_aliases in all_known_aliases.values():
+                    if any(a in org for a in other_aliases):
+                        return 0.0
+            return 0.3
+
         profiles: dict[int, dict] = {}
         for item in results:
             org_name = ((item.get("organization") or {}).get("org_name") or "").lower()
@@ -486,45 +525,65 @@ class LiveNihProvider(NihProvider):
                 pid = pi.get("profile_id")
                 if not pid:
                     continue
+                pi_first = (pi.get("first_name") or "").strip().lower()
+                pi_last  = (pi.get("last_name")  or "").strip().lower()
+                first_sim = fuzz.ratio(first_name.lower(), pi_first) / 100.0
+                last_sim  = fuzz.ratio(last_name.lower(),  pi_last)  / 100.0
+                name_score = 0.5 * first_sim + 0.5 * last_sim
+                # Only track PIs whose name actually matches — skip co-investigators
+                if name_score < 0.5:
+                    continue
                 if pid not in profiles:
-                    pi_first = (pi.get("first_name") or "").strip().lower()
-                    pi_last  = (pi.get("last_name")  or "").strip().lower()
-                    first_sim = fuzz.ratio(first_name.lower(), pi_first) / 100.0
-                    last_sim  = fuzz.ratio(last_name.lower(),  pi_last)  / 100.0
-                    name_score = 0.3 * first_sim + 0.7 * last_sim
                     profiles[pid] = {
                         "pi_name": f"{pi.get('first_name','')} {pi.get('last_name','')}".strip(),
                         "name_score": name_score,
                         "orgs": set(),
-                        "inst_hit": False,
                     }
                 profiles[pid]["orgs"].add(org_name)
 
-        # Institution match: any org in grant history hits an OpenAlex alias
+        # Fetch the most recent grant org for each candidate — this is the best proxy
+        # for their CURRENT institution, regardless of career history
+        for pid, prof in profiles.items():
+            try:
+                recent_org = _nih_recent_org(pid)
+            except Exception:
+                recent_org = ""
+            prof["recent_org"] = recent_org
+
+        multiple_profiles = len(profiles) > 1
         for prof in profiles.values():
-            prof["inst_hit"] = any(
-                alias in org
-                for org in prof["orgs"]
-                for alias in aliases
-            )
+            # Score against most recent org first (current institution signal)
+            recent_org = prof.get("recent_org", "")
+            if recent_org and any(alias in recent_org for alias in aliases):
+                prof["inst_score"] = 1.0
+            elif recent_org:
+                # Recent org is known — check if it's a different known institution
+                is_other = any(
+                    any(a in recent_org for a in other_aliases)
+                    for other_aliases in all_known_aliases.values()
+                )
+                prof["inst_score"] = 0.0 if is_other else 0.3
+            else:
+                # No recent grant data — fall back to all-time orgs
+                raw = _raw_inst_score(prof["orgs"])
+                prof["inst_score"] = raw if (raw != 0.0 or multiple_profiles) else 0.3
 
         def _combined(prof: dict) -> float:
-            return 0.6 * prof["name_score"] + 0.4 * (1.0 if prof["inst_hit"] else 0.0)
+            return 0.45 * prof["name_score"] + 0.55 * prof["inst_score"]
 
-        best_pid  = max(profiles, key=lambda pid: _combined(profiles[pid]))
-        best      = profiles[best_pid]
-        score     = _combined(best)
+        best_pid = max(profiles, key=lambda pid: _combined(profiles[pid]))
+        best     = profiles[best_pid]
+        score    = _combined(best)
 
         print(f"      [NIH] Best PI match: '{best['pi_name']}' "
               f"(score={score:.2f}, name={best['name_score']:.2f}, "
-              f"inst={'yes' if best['inst_hit'] else 'no'})")
+              f"inst={best['inst_score']:.1f}, recent_org='{best.get('recent_org','?')}', "
+              f"profiles_found={len(profiles)})")
 
         # Step 4 — confidence gate
         if score < _NIH_CONFIDENCE_THRESHOLD:
-            if not best["inst_hit"] and len(last_name) < 7:
-                print(f"      [NIH] Low confidence + common name — skipping {name}")
-                return []
-            print(f"      [NIH] Low inst confidence but distinctive name — proceeding for {name}")
+            print(f"      [NIH] Low confidence (score={score:.2f}) — skipping {name}")
+            return []
 
         # Step 5 — pull ALL grants by profile_id (active + historical)
         try:
