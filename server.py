@@ -98,6 +98,24 @@ def _make_sse(payload: dict) -> str:
     return f"data: {json.dumps(payload)}\n\n"
 
 
+_SITE_PASSWORD = os.environ.get("SITE_PASSWORD")
+
+def _check_auth(req) -> bool:
+    if not _SITE_PASSWORD:
+        return True  # no password set — open access (local dev)
+    auth = req.authorization
+    return bool(auth and auth.password == _SITE_PASSWORD)
+
+@app.before_request
+def require_auth():
+    if not _check_auth(request):
+        return Response(
+            "Access denied.",
+            401,
+            {"WWW-Authenticate": 'Basic realm="Faculty Pipeline"'},
+        )
+
+
 @app.route("/")
 def index():
     manual_only = os.environ.get("MANUAL_ONLY", "").lower() in ("1", "true", "yes")
