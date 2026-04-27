@@ -17,7 +17,6 @@ from urllib.parse import urljoin, urlparse
 
 from bs4 import BeautifulSoup
 from openai import OpenAI
-from playwright.sync_api import sync_playwright, TimeoutError as PlaywrightTimeoutError
 
 from providers.base import ScraperProvider, FacultyRecord
 
@@ -36,6 +35,7 @@ def _fetch_html_playwright(url: str) -> str:
     Launch a headless Chromium browser, navigate to the URL, wait for the
     network to go idle (JS finishes loading), and return the full page HTML.
     """
+    from playwright.sync_api import sync_playwright, TimeoutError as PlaywrightTimeoutError
     with sync_playwright() as pw:
         browser = pw.chromium.launch(headless=True)
         page = browser.new_page(
