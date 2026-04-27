@@ -249,34 +249,45 @@ def _worst(statuses: list[str]) -> str:
     return "green"
 
 
+def _nih_confidence(faculty: dict) -> str:
+    """
+    green  — grants found and institution confirmed, OR no grants (not a QC failure)
+    yellow — grants found but institution unconfirmed (Phase 2 fallback match)
+    """
+    if faculty.get("nih_grant_count") and faculty.get("nih_institution_unconfirmed"):
+        return "yellow"
+    return "green"
+
+
+def _hindex_confidence(faculty: dict) -> str:
+    """
+    green  — h-index found (Scopus affiliation-matched)
+    yellow — h-index not found (Scopus had no affiliation match for this person)
+    """
+    return "green" if faculty.get("h_index") is not None else "yellow"
+
+
 def verify_faculty_roles(faculty: dict, client=None) -> dict:
     """
-    Scores all role claims for one faculty member against their stored evidence.
+    Scores all role claims + NIH + H-index confidence for one faculty member.
     `client` is accepted for API compatibility but is no longer used.
-
-    Returns a qc dict with per-category and overall confidence.
 
     Shape:
     {
       "overall":               "green" | "yellow" | "red",
+      "nih_confidence":        "green" | "yellow",
+      "hindex_confidence":     "green" | "yellow",
       "editorial_confidence":  "green" | "yellow" | "red",
       "society_confidence":    "green" | "yellow" | "red",
       "leadership_confidence": "green" | "yellow" | "red",
       "training_confidence":   "green" | "yellow" | "red",
-      "role_details": [
-        {
-          "category":    "editorial",
-          "role":        "Associate Editor",
-          "org":         "Diabetes Care",
-          "confidence":  0.91,
-          "status":      "green",
-          "breakdown":   { ... },
-        },
-        ...
-      ]
+      "role_details": [ ... ]
     }
     """
     name = faculty.get("full_name", "Unknown")
+
+    nih_conf    = _nih_confidence(faculty)
+    hindex_conf = _hindex_confidence(faculty)
 
     all_roles: list[dict] = []
     for cat in ROLE_CATEGORIES:
@@ -286,7 +297,10 @@ def verify_faculty_roles(faculty: dict, client=None) -> dict:
 
     if not all_roles:
         empty = {f"{cat}_confidence": "green" for cat in ROLE_CATEGORIES}
-        return {"overall": "green", "role_details": [], **empty}
+        overall = _worst([nih_conf, hindex_conf])
+        print(f"    [QC] {name} — no roles | NIH: {nih_conf} | H-index: {hindex_conf} | OVERALL: {overall.upper()}")
+        return {"overall": overall, "nih_confidence": nih_conf, "hindex_confidence": hindex_conf,
+                "role_details": [], **empty}
 
     print(f"    [QC] {name} — scoring {len(all_roles)} role(s)")
 
@@ -327,16 +341,18 @@ def verify_faculty_roles(faculty: dict, client=None) -> dict:
         f"{cat}_confidence": _worst(category_statuses[cat]) if category_statuses[cat] else "green"
         for cat in ROLE_CATEGORIES
     }
-    overall = _worst(list(cat_confidences.values()))
+    overall = _worst([*cat_confidences.values(), nih_conf, hindex_conf])
 
     print(
         f"    [QC] {name} summary — "
         + " | ".join(f"{cat}: {cat_confidences[f'{cat}_confidence']}" for cat in ROLE_CATEGORIES)
-        + f" | OVERALL: {overall.upper()}"
+        + f" | NIH: {nih_conf} | H-index: {hindex_conf} | OVERALL: {overall.upper()}"
     )
 
     return {
         "overall": overall,
+        "nih_confidence": nih_conf,
+        "hindex_confidence": hindex_conf,
         **cat_confidences,
         "role_details": role_details,
     }

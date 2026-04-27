@@ -11,9 +11,10 @@ from abc import ABC, abstractmethod
 from typing import TypedDict
 
 
-class Grant(TypedDict):
-    project_num: str
-    title: str
+class Grant(TypedDict, total=False):
+    project_num: str        # required
+    title: str              # required
+    institution_unconfirmed: bool  # True when matched via fallback — current institution not verified
 
 
 class RoleEvidence(TypedDict, total=False):
@@ -67,6 +68,10 @@ class RolesProvider(ABC):
     @abstractmethod
     def get_roles(self, name: str, school: str, profile_url: str = "") -> list[RoleEvidence]:
         """Return evidence-backed role objects for the given faculty member."""
+
+    def get_roles_and_title(self, name: str, school: str, profile_url: str = "") -> "tuple[str | None, list[RoleEvidence]]":
+        """Return (academic_title, roles). Default falls back to get_roles with no title."""
+        return None, self.get_roles(name, school, profile_url)
 
 
 class HIndexProvider(ABC):

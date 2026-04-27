@@ -189,8 +189,9 @@ def start_names_run():
             return jsonify({"error": "Names pipeline already running"}), 409
         _names_pipeline_running = True
 
-    data  = request.json or {}
-    names = data.get("names") or []
+    data       = request.json or {}
+    names      = data.get("names") or []
+    discipline = data.get("discipline") or faculty_search.DISCIPLINE
 
     records = [
         {
@@ -230,6 +231,7 @@ def start_names_run():
         try:
             faculty_search.run_pipeline_from_records(
                 records,
+                discipline=discipline,
                 on_enriched=on_enriched,
                 on_qc_complete=on_qc_complete,
             )

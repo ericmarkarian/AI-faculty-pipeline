@@ -112,6 +112,10 @@ def _load_discipline_context(discipline: str) -> str:
 _ROLES_PROMPT = """\
 {discipline_context}Search the web for the professional roles and service activities of {name} at {school}.
 
+Also find their current academic rank/title (e.g. "Professor", "Associate Professor", \
+"Assistant Professor", "Instructor", "Lecturer"). Look at their institutional faculty \
+profile page. Return null if not clearly stated.
+
 Include ONLY roles that involve active service or responsibility beyond their faculty appointment:
 - Editorial board positions (e.g. "Associate Editor, Diabetes Care")
 - Professional society committee roles (e.g. "President, Pediatric Endocrine Society")
@@ -125,8 +129,11 @@ Do NOT include:
 - Roles explicitly described as "former", "past", "previously", "emeritus", or "ex-"
 - Roles with end dates clearly in the past (e.g. "(2011 - 2013)") — only include current/active roles
 
-Respond ONLY with a JSON object with a single key "roles" containing an array.
-Each item must have exactly these keys:
+Respond ONLY with a JSON object with exactly two keys:
+- "title": string or null — their current academic rank as it appears on their profile
+- "roles": array of role objects
+
+Each role item must have exactly these keys:
 - "category": one of "editorial", "society", "leadership", "training"
 - "role": the specific role title (e.g. "Associate Editor")
 - "org": the organization or journal name (e.g. "Diabetes Care")
@@ -134,7 +141,7 @@ Each item must have exactly these keys:
 - "evidence_text": a RAW VERBATIM EXCERPT (up to 800 characters) copied word-for-word from the surrounding section of the source page where this role appears. Copy the full surrounding paragraph, list block, or table section — do NOT cherry-pick only the confirming sentence. Include enough context that a separate reviewer reading only this excerpt could independently confirm or deny the role claim. Do NOT paraphrase or summarize. If you cannot find raw source text, leave this field as an empty string.
 - "retrieved_at": current UTC timestamp in ISO 8601 format
 
-If no qualifying roles are found, return {{"roles": []}}.
+If no qualifying roles are found, return {{"title": null, "roles": []}}.
 No markdown fences, no explanation — only the JSON object.
 """
 
@@ -154,7 +161,80 @@ import os
 
 _NIH_SEARCH_URL = "https://api.reporter.nih.gov/v2/projects/search"
 _NIH_FIELDS = ["project_num", "project_title", "fiscal_year", "organization", "principal_investigators"]
-_NIH_CONFIDENCE_THRESHOLD = 0.50
+_NIH_CONFIDENCE_THRESHOLD = 0.60
+
+# Scoring weights — must sum to 1.0
+# name = who we're looking for (primary)
+# inst = where they work — checked against xlsx aliases (people move, so not a hard reject)
+# dept = NIH dept_type field — present for university grants, null for hospital grants
+_W_NAME = 0.50
+_W_INST = 0.35
+_W_DEPT = 0.15
+
+
+def _score_dept(org_dept: str, discipline: str) -> float:
+    """0.5 if no data or doesn't match; 1.0 if dept confirms discipline."""
+    if not org_dept:
+        return 0.5
+    dept  = org_dept.lower()
+    words = [w for w in discipline.lower().split() if len(w) > 3]
+    if any(w in dept for w in words):
+        return 1.0
+    return 0.5  # present but unrelated — ignore rather than penalise
+
+
+def _inst_matches(org: str, aliases) -> bool:
+    """True if org name matches any alias via substring or fuzzy (≥85)."""
+    org_l = org.lower()
+    for alias in aliases:
+        if alias in org_l or org_l in alias:
+            return True
+        if len(alias) >= 8 and fuzz.partial_ratio(org_l, alias) >= 85:
+            return True
+    return False
+
+
+def _score_inst(orgs: set[str], target_aliases: tuple[str, ...], all_known: dict) -> float:
+    """1.0 confirmed at target; 0.3 at a different known school; 0.5 unknown."""
+    if not orgs:
+        return 0.5
+    for org in orgs:
+        if _inst_matches(org, target_aliases):
+            return 1.0
+    for org in orgs:
+        for aliases in all_known.values():
+            if _inst_matches(org, aliases):
+                return 0.3
+    return 0.5
+
+
+def _nih_org_names_for(school: str) -> list[str]:
+    """
+    Build org_names list for the NIH Phase 1 API query using xlsx aliases.
+    Strips med-school suffixes so names match NIH's abbreviated org_name format.
+    """
+    aliases = _xlsx_aliases_for(school)
+    if not aliases:
+        parts = [p.strip() for p in school.split(" / ")]
+        aliases = tuple(p.lower() for p in parts if p)
+
+    result: list[str] = []
+    seen: set[str] = set()
+    for alias in aliases:
+        a = alias.strip()
+        if not a or a in seen:
+            continue
+        seen.add(a)
+        result.append(a)
+        # Also add version with med-school suffix stripped (NIH stores "Stanford University", not the full name)
+        for suffix in _MED_SUFFIXES:
+            if a.endswith(suffix):
+                stripped = a[: len(a) - len(suffix)].strip()
+                if stripped and stripped not in seen:
+                    seen.add(stripped)
+                    result.append(stripped)
+                break
+    return result
 
 
 # Suffixes stripped before searching OpenAlex (which indexes universities, not med schools)
@@ -436,173 +516,166 @@ def _nih_fetch_all_by_profile(profile_id: int) -> list[dict]:
     return all_results
 
 
-def _nih_recent_org(profile_id: int) -> str:
-    """Return the org_name from the most recent grant for this PI — best proxy for current institution."""
-    payload = {
-        "criteria": {"pi_profile_ids": [profile_id]},
-        "fields": ["fiscal_year", "organization"],
-        "limit": 1,
-        "offset": 0,
-        "sort_field": "fiscal_year",
-        "sort_order": "desc",
-    }
-    r = requests.post(_NIH_SEARCH_URL, json=payload, timeout=20)
-    r.raise_for_status()
-    results = r.json().get("results", [])
-    if not results:
-        return ""
-    return (results[0].get("organization") or {}).get("org_name", "").lower()
-
-
 class LiveNihProvider(NihProvider):
-    def get_grants(self, name: str, school: str) -> list[Grant]:
-        """
-        Full flow:
-          1. OpenAlex  — fetch all known institution name variants.
-          2. NIH name search — query by first+last, no org filter, get
-             principal_investigators.profile_id per result.
-          3. Disambiguate — score each unique PI profile by:
-               name similarity  (60 %) — fuzzy match of first + last name
-               institution hit  (40 %) — any grant org matches an OpenAlex alias
-          4. Accept best profile if score >= threshold; fallback to name
-             distinctiveness for profiles with no institution match.
-          5. Profile pull — query NIH by profile_id to get ALL grants
-             (active + historical + cross-institution), paginating if needed.
-        """
-        parts = _clean_name_parts(name)
-        if len(parts) < 2:
-            return []
-        first_name, last_name = parts[0], parts[-1]
+    def __init__(self, discipline: str = ""):
+        self._discipline = discipline
 
-        # Step 1 — institution aliases from OpenAlex
-        aliases: tuple[str, ...] = _get_openalex_aliases(school)
+    # ── helpers ──────────────────────────────────────────────────────────────
 
-        # Step 2 — name-based NIH search (no org filter)
-        try:
-            results = _nih_search({
-                "criteria": {"pi_names": [{"first_name": first_name, "last_name": last_name}]},
-                "fields": _NIH_FIELDS,
-                "limit": 500,
-                "offset": 0,
-            })
-        except Exception as e:
-            print(f"      [NIH] Search failed for {name}: {e}")
-            return []
-
-        if not results:
-            print(f"      [NIH] No results for {name}")
-            return []
-
-        print(f"      [NIH] Name search '{first_name} {last_name}' → {len(results)} candidate grant(s)")
-
-        # Step 3 — score each unique PI profile
-        # name_score: fuzzy full-name match, first + last weighted equally
-        # inst_score: 1.0  confirmed — at least one grant org matches a target alias
-        #             0.3  neutral   — grants at unknown orgs, or no grants at all
-        #             0.0  mismatch  — grants confirmed at a different known institution
-        #                             BUT only penalised when multiple profiles exist for
-        #                             this name (i.e. genuinely different people).
-        #                             A single unique profile that's at another institution
-        #                             is treated as 0.3 (person likely moved).
-        all_known_aliases = _load_xlsx_aliases()
-
-        def _raw_inst_score(orgs: set) -> float:
-            if not orgs:
-                return 0.3
-            for org in orgs:
-                if any(alias in org for alias in aliases):
-                    return 1.0
-            for org in orgs:
-                for other_aliases in all_known_aliases.values():
-                    if any(a in org for a in other_aliases):
-                        return 0.0
-            return 0.3
-
+    def _parse_results_into_profiles(
+        self, results: list[dict], first_name: str, last_name: str
+    ) -> dict[int, dict]:
+        """Aggregate NIH search results into per-profile-id dicts."""
         profiles: dict[int, dict] = {}
         for item in results:
-            org_name = ((item.get("organization") or {}).get("org_name") or "").lower()
+            org      = item.get("organization") or {}
+            org_name = (org.get("org_name") or "").lower()
+            org_dept = (org.get("dept_type") or "").lower()
             for pi in (item.get("principal_investigators") or []):
                 pid = pi.get("profile_id")
                 if not pid:
                     continue
                 pi_first = (pi.get("first_name") or "").strip().lower()
                 pi_last  = (pi.get("last_name")  or "").strip().lower()
-                first_sim = fuzz.ratio(first_name.lower(), pi_first) / 100.0
-                last_sim  = fuzz.ratio(last_name.lower(),  pi_last)  / 100.0
+                first_sim  = fuzz.ratio(first_name.lower(), pi_first) / 100.0
+                last_sim   = fuzz.ratio(last_name.lower(),  pi_last)  / 100.0
                 name_score = 0.5 * first_sim + 0.5 * last_sim
-                # Only track PIs whose name actually matches — skip co-investigators
                 if name_score < 0.5:
                     continue
                 if pid not in profiles:
                     profiles[pid] = {
-                        "pi_name": f"{pi.get('first_name','')} {pi.get('last_name','')}".strip(),
+                        "pi_name":    f"{pi.get('first_name','')} {pi.get('last_name','')}".strip(),
                         "name_score": name_score,
-                        "orgs": set(),
+                        "orgs":       set(),
+                        "depts":      set(),
                     }
                 profiles[pid]["orgs"].add(org_name)
+                if org_dept:
+                    profiles[pid]["depts"].add(org_dept)
+        return profiles
 
-        # Fetch the most recent grant org for each candidate — this is the best proxy
-        # for their CURRENT institution, regardless of career history
-        for pid, prof in profiles.items():
-            try:
-                recent_org = _nih_recent_org(pid)
-            except Exception:
-                recent_org = ""
-            prof["recent_org"] = recent_org
-
-        multiple_profiles = len(profiles) > 1
-        for prof in profiles.values():
-            # Score against most recent org first (current institution signal)
-            recent_org = prof.get("recent_org", "")
-            if recent_org and any(alias in recent_org for alias in aliases):
-                prof["inst_score"] = 1.0
-            elif recent_org:
-                # Recent org is known — check if it's a different known institution
-                is_other = any(
-                    any(a in recent_org for a in other_aliases)
-                    for other_aliases in all_known_aliases.values()
-                )
-                prof["inst_score"] = 0.0 if is_other else 0.3
-            else:
-                # No recent grant data — fall back to all-time orgs
-                raw = _raw_inst_score(prof["orgs"])
-                prof["inst_score"] = raw if (raw != 0.0 or multiple_profiles) else 0.3
-
-        def _combined(prof: dict) -> float:
-            return 0.45 * prof["name_score"] + 0.55 * prof["inst_score"]
-
-        best_pid = max(profiles, key=lambda pid: _combined(profiles[pid]))
-        best     = profiles[best_pid]
-        score    = _combined(best)
-
-        print(f"      [NIH] Best PI match: '{best['pi_name']}' "
-              f"(score={score:.2f}, name={best['name_score']:.2f}, "
-              f"inst={best['inst_score']:.1f}, recent_org='{best.get('recent_org','?')}', "
-              f"profiles_found={len(profiles)})")
-
-        # Step 4 — confidence gate
-        if score < _NIH_CONFIDENCE_THRESHOLD:
-            print(f"      [NIH] Low confidence (score={score:.2f}) — skipping {name}")
-            return []
-
-        # Step 5 — pull ALL grants by profile_id (active + historical)
+    def _grants_for_profile(
+        self, profile_id: int, fallback_results: list[dict], unconfirmed: bool = False
+    ) -> list[Grant]:
+        """Fetch all grants for a confirmed profile_id and return them."""
         try:
-            all_items = _nih_fetch_all_by_profile(best_pid)
+            all_items = _nih_fetch_all_by_profile(profile_id)
         except Exception as e:
-            print(f"      [NIH] Profile pull failed for profile_id={best_pid}: {e}")
-            # Degrade gracefully: return what the name search already found
-            all_items = results
-
+            print(f"      [NIH] Profile pull failed for profile_id={profile_id}: {e}")
+            all_items = fallback_results
         seen: set[str] = set()
         grants: list[Grant] = []
         for item in all_items:
             num = item.get("project_num", "Unknown")
             if num not in seen:
                 seen.add(num)
-                grants.append({"project_num": num, "title": item.get("project_title", "")})
+                g: Grant = {"project_num": num, "title": item.get("project_title", "")}
+                if unconfirmed:
+                    g["institution_unconfirmed"] = True
+                grants.append(g)
+        return grants
 
-        print(f"      [NIH] {name}: {len(grants)} total grant(s) "
-              f"(profile_id={best_pid}, all institutions, all years)")
+    # ── main entry point ─────────────────────────────────────────────────────
+
+    def get_grants(self, name: str, school: str) -> list[Grant]:
+        """
+        Two-phase NIH identity matching:
+
+        Phase 1 — targeted (high confidence):
+          Search pi_names + org_names using xlsx institution aliases (hospital names +
+          university short forms). If any result comes back the person has grants at
+          this institution → take the best name match, pull ALL grants by profile_id.
+
+        Phase 2 — broad fallback (scored, flagged as unconfirmed):
+          No institution match found (person may have moved or hold no grants here).
+          Search by name only, score candidates on name (0.50) + inst (0.35) + dept (0.15).
+          dept_type is present for university grants, null for hospital grants — treated
+          as neutral when absent. Returns nothing if best candidate is below threshold.
+        """
+        parts = _clean_name_parts(name)
+        if len(parts) < 2:
+            return []
+        first_name, last_name = parts[0], parts[-1]
+
+        org_names_query  = _nih_org_names_for(school)
+        target_aliases   = _xlsx_aliases_for(school) or (school.lower(),)
+        all_known        = _load_xlsx_aliases()
+
+        # ── Phase 1: name + institution ───────────────────────────────────────
+        print(f"      [NIH] Phase 1: searching '{first_name} {last_name}' at {school}")
+        try:
+            p1_results = _nih_search({
+                "criteria": {
+                    "pi_names":  [{"first_name": first_name, "last_name": last_name}],
+                    "org_names": org_names_query,
+                },
+                "fields": _NIH_FIELDS,
+                "limit": 500,
+            })
+        except Exception as e:
+            print(f"      [NIH] Phase 1 search failed: {e}")
+            p1_results = []
+
+        if p1_results:
+            profiles = self._parse_results_into_profiles(p1_results, first_name, last_name)
+            if profiles:
+                best_pid = max(profiles, key=lambda pid: profiles[pid]["name_score"])
+                best     = profiles[best_pid]
+                print(f"      [NIH] Phase 1 match: '{best['pi_name']}' "
+                      f"(name={best['name_score']:.2f}, profile_id={best_pid})")
+                grants = self._grants_for_profile(best_pid, p1_results, unconfirmed=False)
+                print(f"      [NIH] {name}: {len(grants)} grant(s) — institution confirmed")
+                return grants
+
+        print(f"      [NIH] Phase 1: no grants found at {school} — trying broad search")
+
+        # ── Phase 2: name only + scoring ──────────────────────────────────────
+        try:
+            p2_results = _nih_search({
+                "criteria": {"pi_names": [{"first_name": first_name, "last_name": last_name}]},
+                "fields": _NIH_FIELDS,
+                "limit": 500,
+            })
+        except Exception as e:
+            print(f"      [NIH] Phase 2 search failed: {e}")
+            return []
+
+        if not p2_results:
+            print(f"      [NIH] No NIH grants found for {name}")
+            return []
+
+        print(f"      [NIH] Phase 2: {len(p2_results)} candidate grant(s) across all institutions")
+        profiles = self._parse_results_into_profiles(p2_results, first_name, last_name)
+        if not profiles:
+            return []
+
+        for prof in profiles.values():
+            prof["dept_score"] = max(
+                (_score_dept(d, self._discipline) for d in prof["depts"]),
+                default=0.5,
+            )
+            prof["inst_score"] = _score_inst(prof["orgs"], target_aliases, all_known)
+
+        def _combined(p: dict) -> float:
+            return _W_NAME * p["name_score"] + _W_INST * p["inst_score"] + _W_DEPT * p["dept_score"]
+
+        ranked        = sorted(profiles.items(), key=lambda kv: _combined(kv[1]), reverse=True)
+        best_pid, best = ranked[0]
+        score         = _combined(best)
+        ambiguous     = len(ranked) > 1 and (score - _combined(ranked[1][1])) < 0.05
+
+        print(f"      [NIH] Phase 2 best: '{best['pi_name']}' "
+              f"(score={score:.2f} | name={best['name_score']:.2f} "
+              f"inst={best['inst_score']:.2f} dept={best['dept_score']:.2f} "
+              f"| profiles={len(profiles)}"
+              f"{' | AMBIGUOUS' if ambiguous else ''})")
+
+        if score < _NIH_CONFIDENCE_THRESHOLD:
+            print(f"      [NIH] Low confidence (score={score:.2f}) — skipping {name}")
+            return []
+
+        grants = self._grants_for_profile(best_pid, p2_results, unconfirmed=True)
+        print(f"      [NIH] {name}: {len(grants)} grant(s) — institution unconfirmed")
         return grants
 
 
@@ -611,7 +684,8 @@ class LiveRolesProvider(RolesProvider):
         self._client = openai_client
         self._discipline_context = _load_discipline_context(discipline) if discipline else ""
 
-    def get_roles(self, name: str, school: str, profile_url: str = "") -> list[RoleEvidence]:
+    def _fetch(self, name: str, school: str) -> dict:
+        """Make one web search call and return the parsed JSON (title + roles)."""
         prompt = _ROLES_PROMPT.format(name=name, school=school, discipline_context=self._discipline_context)
         response = self._client.responses.create(
             model=_LIVE_MODEL,
@@ -624,16 +698,24 @@ class LiveRolesProvider(RolesProvider):
                 for item in block.content:
                     if hasattr(item, "text"):
                         raw += item.text
+        return _parse_json(raw)
 
-        parsed = _parse_json(raw)
+    def _process_roles(self, parsed: dict) -> list[RoleEvidence]:
         roles = parsed.get("roles", [])
-
         now = datetime.now(timezone.utc).isoformat()
         for role in roles:
             role.setdefault("retrieved_at", now)
             role.setdefault("model", _LIVE_MODEL)
-
         return roles
+
+    def get_roles(self, name: str, school: str, profile_url: str = "") -> list[RoleEvidence]:
+        return self._process_roles(self._fetch(name, school))
+
+    def get_roles_and_title(self, name: str, school: str, profile_url: str = "") -> tuple[str | None, list[RoleEvidence]]:
+        """Single web search call returning (academic_title, roles)."""
+        parsed = self._fetch(name, school)
+        title = parsed.get("title") or None
+        return title, self._process_roles(parsed)
 
 
 # ── Scoring helpers (used by LiveHIndexProvider) ──────────────────────────────
@@ -709,8 +791,25 @@ def _name_matches(first: str, last: str, entry: dict) -> bool:
     return s_first[0] == first[0].lower()
 
 
+def _scopus_get(url: str, params: dict, max_retries: int = 4) -> requests.Response:
+    """GET with exponential backoff on 429 rate-limit responses."""
+    delay = 10.0
+    for attempt in range(max_retries):
+        resp = requests.get(url, params=params, headers={"Accept": "application/json"}, timeout=15)
+        if resp.status_code != 429:
+            resp.raise_for_status()
+            return resp
+        retry_after = resp.headers.get("X-RateLimit-Reset") or resp.headers.get("Retry-After")
+        wait = float(retry_after) if retry_after and retry_after.isdigit() else delay
+        print(f"      [Scopus] Rate limited — waiting {wait:.0f}s (attempt {attempt + 1}/{max_retries})")
+        time.sleep(wait)
+        delay = min(delay * 2, 120.0)
+    resp.raise_for_status()
+    return resp
+
+
 def _scopus_search(query: str, api_key: str) -> list[dict]:
-    resp = requests.get(
+    resp = _scopus_get(
         "https://api.elsevier.com/content/search/author",
         params={
             "query": query,
@@ -718,10 +817,7 @@ def _scopus_search(query: str, api_key: str) -> list[dict]:
             "count": 25,
             "apiKey": api_key,
         },
-        headers={"Accept": "application/json"},
-        timeout=15,
     )
-    resp.raise_for_status()
     entries = resp.json().get("search-results", {}).get("entry", [])
     if not entries or "error" in entries[0]:
         return []
@@ -729,13 +825,10 @@ def _scopus_search(query: str, api_key: str) -> list[dict]:
 
 
 def _scopus_fetch_profile(author_id: str, api_key: str) -> dict:
-    resp = requests.get(
+    resp = _scopus_get(
         f"https://api.elsevier.com/content/author/author_id/{author_id}",
         params={"field": "h-index,document-count,affiliation-current", "apiKey": api_key},
-        headers={"Accept": "application/json"},
-        timeout=15,
     )
-    resp.raise_for_status()
     return resp.json().get("author-retrieval-response", [{}])[0]
 
 
@@ -750,8 +843,8 @@ class LiveHIndexProvider(HIndexProvider):
     def get_hindex(self, name: str, school: str) -> HIndexEvidence:
         with LiveHIndexProvider._lock:
             elapsed = time.time() - LiveHIndexProvider._last_call
-            if elapsed < 1.5:
-                time.sleep(1.5 - elapsed)
+            if elapsed < 3.0:
+                time.sleep(3.0 - elapsed)
             LiveHIndexProvider._last_call = time.time()
 
         now = datetime.now(timezone.utc).isoformat()
@@ -763,6 +856,17 @@ class LiveHIndexProvider(HIndexProvider):
                 "retrieved_at": now,
             }
 
+        try:
+            return self._get_hindex_inner(name, school, now)
+        except Exception as exc:
+            print(f"      [Scopus] Unrecoverable error for {name}: {exc}")
+            return {
+                "h_index": None, "scopus_author_id": None,
+                "source_url": "", "evidence_text": f"Scopus error: {exc}",
+                "retrieved_at": now,
+            }
+
+    def _get_hindex_inner(self, name: str, school: str, now: str) -> HIndexEvidence:
         first, middle, last = _parse_name_for_scopus(name)
         if not first or not last:
             return {

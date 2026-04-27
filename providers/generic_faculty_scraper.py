@@ -88,13 +88,28 @@ def _pagination_urls(html: str, base_url: str) -> list[str]:
     return urls
 
 
-def _extract_via_gpt4o(text: str, school: str, discipline: str, client: OpenAI) -> list[dict]:
+_MODEL_COSTS = {
+    "gpt-4o":       {"input": 2.50,  "output": 10.00},
+    "gpt-4o-mini":  {"input": 0.150, "output": 0.600},
+}
+
+def _log_cost(model: str, usage) -> float:
+    """Print token usage and return total cost in USD."""
+    rates = _MODEL_COSTS.get(model, {"input": 0, "output": 0})
+    cost = (usage.prompt_tokens / 1_000_000 * rates["input"] +
+            usage.completion_tokens / 1_000_000 * rates["output"])
+    print(f"    [GenericScraper] tokens: {usage.prompt_tokens} in / {usage.completion_tokens} out — ${cost:.5f} ({model})")
+    return cost
+
+
+def _extract_via_gpt4o(text: str, school: str, discipline: str, client: OpenAI, model: str = "gpt-4o") -> list[dict]:
     """Send plain-text page content to GPT-4o and extract a structured faculty list."""
     chunks = [text[i:i + _TEXT_CHUNK_CHARS] for i in range(0, len(text), _TEXT_CHUNK_CHARS)]
     print(f"    [GenericScraper] Extracting from {len(chunks)} text chunk(s)")
 
     all_items: list[dict] = []
     seen_names: set[str] = set()
+    total_cost = 0.0
 
     for i, chunk in enumerate(chunks):
         prompt = f"""You are extracting faculty data from a medical school directory page.
@@ -116,11 +131,12 @@ If no faculty are visible, return an empty array: []
 """
         try:
             response = client.chat.completions.create(
-                model="gpt-4o",
+                model=model,
                 messages=[{"role": "user", "content": prompt}],
                 max_tokens=8000,
                 temperature=0,
             )
+            total_cost += _log_cost(model, response.usage)
             raw = response.choices[0].message.content.strip()
             raw = raw.removeprefix("```json").removeprefix("```").removesuffix("```").strip()
             items = json.loads(raw)
@@ -135,6 +151,8 @@ If no faculty are visible, return an empty array: []
         except Exception as e:
             print(f"    [GenericScraper] Chunk {i + 1} failed: {e}")
 
+    if len(chunks) > 1:
+        print(f"    [GenericScraper] Total extraction cost: ${total_cost:.5f}")
     return all_items
 
 
@@ -178,10 +196,12 @@ class GenericFacultyScraper(ScraperProvider):
         self,
         urls_path: str = "data/faculty_urls.json",
         request_delay: float = 1.0,
+        extraction_model: str = "gpt-4o",
     ) -> None:
         self._urls_path = urls_path
         self._urls = _load_urls(urls_path)
         self._delay = request_delay
+        self._extraction_model = extraction_model
         self._client = OpenAI(api_key=os.environ.get("OPENAI_API_KEY"))
 
     def _affiliated_hospitals(self, school: str) -> list[str]:
@@ -291,7 +311,7 @@ class GenericFacultyScraper(ScraperProvider):
                     text += "\n" + _html_to_text(page_html, base_url=page_url)
                 except Exception as pe:
                     print(f"    [GenericScraper] Skipping pagination URL {page_url}: {pe}")
-            extracted = _extract_via_gpt4o(text, school, discipline, self._client)
+            extracted = _extract_via_gpt4o(text, school, discipline, self._client, self._extraction_model)
         except Exception as e:
             print(f"    [GenericScraper] Playwright fetch failed ({e}), trying web search fallback...")
             try:

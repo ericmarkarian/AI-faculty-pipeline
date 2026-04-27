@@ -333,9 +333,10 @@ def agent2_enrich(
     roles_provider=None,
     hindex_provider=None,
     on_enriched=None,
+    discipline: str = DISCIPLINE,
 ) -> dict:
     if nih_provider is None:
-        nih_provider = LiveNihProvider()
+        nih_provider = LiveNihProvider(discipline=discipline)
     if roles_provider is None:
         roles_provider = LiveRolesProvider(client)
     if hindex_provider is None:
@@ -381,11 +382,16 @@ def agent2_enrich(
             except Exception as e:
                 print(f"    [!] ProfileScraper error, falling back to LLM: {e}")
 
+    need_title = not faculty.get("title")  # True for manual lookup records
     fetch_keys = ["nih"] + ([] if profile_scraper_roles is not None else ["roles"])
     with ThreadPoolExecutor(max_workers=2) as _pool:
         futures_map = {"nih": _pool.submit(nih_provider.get_grants, name, school)}
         if profile_scraper_roles is None:
-            futures_map["roles"] = _pool.submit(roles_provider.get_roles, name, school, profile_url)
+            # Use get_roles_and_title when we need the rank (manual lookup), get_roles otherwise
+            if need_title:
+                futures_map["roles"] = _pool.submit(roles_provider.get_roles_and_title, name, school, profile_url)
+            else:
+                futures_map["roles"] = _pool.submit(roles_provider.get_roles, name, school, profile_url)
         fetch_results = []
         for key in fetch_keys:
             try:
@@ -402,6 +408,7 @@ def agent2_enrich(
         leadership_roles = [r for r in all_roles if r.get("category") == "leadership"]
         print(f"    -> [ProfileScraper] Editorial: {len(editorial_roles)}, Society: {len(society_roles)}, Training: {len(training_roles)}, Leadership: {len(leadership_roles)}")
 
+    extracted_title: str | None = None
     for key, result in zip(fetch_keys, fetch_results):
         if key == "nih":
             if isinstance(result, Exception):
@@ -415,7 +422,13 @@ def agent2_enrich(
             if isinstance(result, Exception):
                 print(f"    [!] Roles search failed for {name}: {result}")
             else:
-                all_roles        = result
+                # get_roles_and_title returns (title, roles); get_roles returns just roles
+                if need_title and isinstance(result, tuple):
+                    extracted_title, all_roles = result
+                    if extracted_title:
+                        print(f"    -> [LLM] Title found: {extracted_title}")
+                else:
+                    all_roles = result
                 editorial_roles  = [r for r in all_roles if r.get("category") == "editorial"]
                 society_roles    = [r for r in all_roles if r.get("category") == "society"]
                 training_roles   = [r for r in all_roles if r.get("category") == "training"]
@@ -426,6 +439,7 @@ def agent2_enrich(
     nih_grant_titles = " | ".join(g["title"] for g in nih_grants)
 
     nih_grant_count = len(nih_grants)
+    nih_institution_unconfirmed = any(g.get("institution_unconfirmed") for g in nih_grants)
 
     # --- Observability ---
     latency_ms = int((time.time() - t0) * 1000)
@@ -445,10 +459,12 @@ def agent2_enrich(
 
     return {
         **faculty,
+        "title": faculty.get("title") or extracted_title,
         "h_index": h_index,
         "nih_project_nums":  nih_project_nums,
         "nih_grant_titles":  nih_grant_titles,
         "nih_grant_count":   nih_grant_count,
+        "nih_institution_unconfirmed": nih_institution_unconfirmed,
         "editorial_roles":   editorial_roles,
         "society_roles":     society_roles,
         "training_roles":    training_roles,
@@ -675,7 +691,7 @@ def generate_faculty_summary(record: dict) -> str:
 # MAIN PIPELINE
 # ─────────────────────────────────────────────
 
-def run_pipeline_from_records(records, on_enriched=None, on_qc_complete=None, roles_provider=None):
+def run_pipeline_from_records(records, on_enriched=None, on_qc_complete=None, roles_provider=None, discipline: str = DISCIPLINE):
     """Run Agent 2 (enrichment) + Agent 3 (QC) on a pre-built list of faculty records.
 
     Records must have at minimum: full_name, school.
@@ -693,7 +709,7 @@ def run_pipeline_from_records(records, on_enriched=None, on_qc_complete=None, ro
     _print_lock = threading.Lock()
 
     with ThreadPoolExecutor(max_workers=MAX_WORKERS) as executor:
-        futures = {executor.submit(agent2_enrich, f, roles_provider=roles_provider): i for i, f in enumerate(records)}
+        futures = {executor.submit(agent2_enrich, f, roles_provider=roles_provider, discipline=discipline): i for i, f in enumerate(records)}
         for completed, future in enumerate(as_completed(futures), 1):
             idx = futures[future]
             result = future.result()
@@ -752,12 +768,14 @@ def run_pipeline(schools=None, discipline=None, on_enriched=None, on_qc_complete
         print("\n[!] No faculty found. Check your API key and try again.")
         return
 
-    final = run_pipeline_from_records(deduped, on_enriched=on_enriched, on_qc_complete=on_qc_complete, roles_provider=_roles_provider)
+    final = run_pipeline_from_records(deduped, on_enriched=on_enriched, on_qc_complete=on_qc_complete, roles_provider=_roles_provider, discipline=_discipline)
 
     # Flatten nested qc dict into top-level columns for the CSV
     for record in final:
         qc = record.get("qc") or {}
         record["qc_overall"]               = qc.get("overall", "")
+        record["qc_nih_confidence"]        = qc.get("nih_confidence", "")
+        record["qc_hindex_confidence"]     = qc.get("hindex_confidence", "")
         record["qc_editorial_confidence"]  = qc.get("editorial_confidence", "")
         record["qc_society_confidence"]    = qc.get("society_confidence", "")
         record["qc_leadership_confidence"] = qc.get("leadership_confidence", "")
@@ -823,7 +841,7 @@ def run_pipeline(schools=None, discipline=None, on_enriched=None, on_qc_complete
     print(f"   Cache hit (NIH):   {m['cache_hit_rate_nih']:.0%}")
     print(f"   Cache hit (roles): {m['cache_hit_rate_roles']:.0%}")
 
-    summary_cols = ["full_name", "school", "title", "h_index", "qc_overall", "qc_editorial_confidence", "qc_society_confidence", "qc_leadership_confidence", "qc_training_confidence"]
+    summary_cols = ["full_name", "school", "title", "h_index", "nih_grant_count", "qc_overall", "qc_nih_confidence", "qc_hindex_confidence", "qc_editorial_confidence", "qc_society_confidence", "qc_leadership_confidence", "qc_training_confidence"]
     available = [c for c in summary_cols if c in df.columns]
     print("\n--- PREVIEW (first 10 rows) ---")
     print(df[available].head(10).to_string(index=False))
