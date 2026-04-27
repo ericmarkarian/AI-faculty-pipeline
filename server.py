@@ -100,7 +100,13 @@ def _make_sse(payload: dict) -> str:
 
 @app.route("/")
 def index():
-    resp = send_file("medfaculty.html")
+    manual_only = os.environ.get("MANUAL_ONLY", "").lower() in ("1", "true", "yes")
+    with open("medfaculty.html", "r") as f:
+        html = f.read()
+    if manual_only:
+        html = html.replace("<head>", "<head><script>window.MANUAL_ONLY=true;</script>", 1)
+    from flask import Response
+    resp = Response(html, mimetype="text/html")
     resp.headers["Cache-Control"] = "no-store, no-cache, must-revalidate"
     return resp
 

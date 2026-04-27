@@ -844,7 +844,8 @@ function SchoolSelector({ selected, setSelected, typeFilter }) {
 /* ── App ── */
 function App() {
   /* ── Tab state ── */
-  const [activeTab,setActiveTab] = useState('search');
+  const manualOnly = typeof window!=='undefined' && window.MANUAL_ONLY;
+  const [activeTab,setActiveTab] = useState(manualOnly?'lookup':'search');
 
   /* ── School Search tab state ── */
   const [selected,setSelected]       = useState([]);
@@ -1140,7 +1141,7 @@ function App() {
       {/* Tab navigation */}
       <div style={{background:'#fff',borderBottom:'1px solid var(--border)',flexShrink:0}}>
         <div style={{maxWidth:1440,margin:'0 auto',padding:'0 36px',display:'flex',gap:0}}>
-          {[['search','School Search'],['lookup','Name Lookup']].map(([t,label])=>(
+          {[['search','School Search'],['lookup','Name Lookup']].filter(([t])=>!(manualOnly&&t==='search')).map(([t,label])=>(
             <button key={t} onClick={()=>setActiveTab(t)} style={{
               padding:'11px 20px',border:'none',
               borderBottom:activeTab===t?'2px solid var(--red)':'2px solid transparent',
