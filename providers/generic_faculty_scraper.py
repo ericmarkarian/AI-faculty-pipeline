@@ -1,26 +1,27 @@
 """
 GenericFacultyScraper — fetches faculty directory pages using a real browser (Playwright)
-so JS-rendered pages load fully, then sends cleaned HTML chunks to GPT-4o for extraction.
+so JS-rendered pages load fully, then sends compressed plain-text to GPT-4o for extraction.
+
+HTML is converted to plain text with hrefs inlined before sending to GPT-4o, keeping
+token counts low (typically 1-3 calls per school vs 78-104 with raw HTML chunks).
 
 Works for any school in data/faculty_urls.json regardless of HTML structure.
 Falls back to GPT-4o web search if Playwright fetch fails.
 """
 import json
 import os
+import re
 import time
 from pathlib import Path
+from urllib.parse import urljoin, urlparse
 
-from bs4 import BeautifulSoup, Tag
+from bs4 import BeautifulSoup
 from openai import OpenAI
 from playwright.sync_api import sync_playwright, TimeoutError as PlaywrightTimeoutError
 
 from providers.base import ScraperProvider, FacultyRecord
 
-_CHUNK_MAX_CHARS = 12000   # max chars per HTML chunk sent to GPT-4o
-_CHUNK_OVERLAP   = 300     # chars of overlap so entries at boundaries aren't missed
-
-# Top-level block elements — chunk boundaries are placed between these
-_BLOCK_TAGS = {"li", "tr", "div", "article", "section", "dt"}
+_TEXT_CHUNK_CHARS = 80000  # max plain-text chars per GPT-4o call
 
 
 def _load_urls(urls_path: str) -> dict:
@@ -55,65 +56,60 @@ def _fetch_html_playwright(url: str) -> str:
     return html
 
 
-def _clean_html(html: str) -> str:
-    """Strip noise tags but keep structural HTML (links, headings, lists)."""
+def _html_to_text(html: str, base_url: str = "") -> str:
+    """Strip chrome, preserve hrefs inline so GPT-4o can extract profile URLs."""
     soup = BeautifulSoup(html, "html.parser")
     for tag in soup(["script", "style", "nav", "footer", "header", "noscript", "meta", "link"]):
         tag.decompose()
-    # Return the inner body HTML, or full HTML if no body tag
-    body = soup.find("body")
-    return str(body) if body else str(soup)
+    for a in soup.find_all("a", href=True):
+        href = a["href"]
+        if base_url and not href.startswith("http"):
+            href = urljoin(base_url, href)
+        if href.startswith("http"):
+            a.replace_with(f"{a.get_text(strip=True)} [{href}]")
+    return soup.get_text(" ", strip=True)
 
 
-def _chunk_html(html: str) -> list[str]:
-    """
-    Split cleaned HTML into chunks of at most _CHUNK_MAX_CHARS.
-    Tries to break at block-element boundaries so faculty entries aren't split.
-    """
+def _pagination_urls(html: str, base_url: str) -> list[str]:
+    """Return additional page URLs found in pagination links, ordered and deduplicated."""
     soup = BeautifulSoup(html, "html.parser")
-
-    # Collect top-level block elements as candidate split points
-    blocks: list[str] = []
-    for el in soup.descendants:
-        if isinstance(el, Tag) and el.name in _BLOCK_TAGS:
-            blocks.append(str(el))
-
-    # If no block elements found, fall back to raw string chunking
-    if not blocks:
-        chunks = []
-        start = 0
-        while start < len(html):
-            chunks.append(html[start:start + _CHUNK_MAX_CHARS])
-            start += _CHUNK_MAX_CHARS - _CHUNK_OVERLAP
-        return chunks
-
-    # Greedily pack blocks into chunks up to _CHUNK_MAX_CHARS
-    chunks: list[str] = []
-    current = ""
-    for block in blocks:
-        if len(current) + len(block) > _CHUNK_MAX_CHARS and current:
-            chunks.append(current)
-            # Start new chunk with a small overlap from the tail of the previous
-            current = current[-_CHUNK_OVERLAP:] + block
-        else:
-            current += block
-    if current:
-        chunks.append(current)
-
-    return chunks
+    base_domain = urlparse(base_url).netloc
+    seen = {base_url}
+    urls = []
+    for a in soup.find_all("a", href=True):
+        full = urljoin(base_url, a["href"])
+        if full in seen or urlparse(full).netloc != base_domain:
+            continue
+        if re.search(r'/page/\d+|[?&]page=\d+|[?&]p=\d+|[?&]pg=\d+', full):
+            seen.add(full)
+            urls.append(full)
+    urls.sort(key=lambda u: int(re.search(r'\d+', re.search(
+        r'/page/\d+|[?&](?:page|p|pg)=\d+', u).group()).group()))
+    return urls
 
 
-def _extract_via_gpt4o(html: str, school: str, discipline: str, client: OpenAI) -> list[dict]:
-    """
-    Send cleaned HTML chunks to GPT-4o and extract a structured faculty list.
-    GPT-4o reads href attributes natively so profile_url is captured correctly.
-    Deduplicates results across chunks by full_name.
-    """
-    chunks = _chunk_html(html)
-    print(f"    [GenericScraper] Extracting from {len(chunks)} HTML chunk(s)")
+_MODEL_COSTS = {
+    "gpt-4o":       {"input": 2.50,  "output": 10.00},
+    "gpt-4o-mini":  {"input": 0.150, "output": 0.600},
+}
+
+def _log_cost(model: str, usage) -> float:
+    """Print token usage and return total cost in USD."""
+    rates = _MODEL_COSTS.get(model, {"input": 0, "output": 0})
+    cost = (usage.prompt_tokens / 1_000_000 * rates["input"] +
+            usage.completion_tokens / 1_000_000 * rates["output"])
+    print(f"    [GenericScraper] tokens: {usage.prompt_tokens} in / {usage.completion_tokens} out — ${cost:.5f} ({model})")
+    return cost
+
+
+def _extract_via_gpt4o(text: str, school: str, discipline: str, client: OpenAI, model: str = "gpt-4o") -> list[dict]:
+    """Send plain-text page content to GPT-4o and extract a structured faculty list."""
+    chunks = [text[i:i + _TEXT_CHUNK_CHARS] for i in range(0, len(text), _TEXT_CHUNK_CHARS)]
+    print(f"    [GenericScraper] Extracting from {len(chunks)} text chunk(s)")
 
     all_items: list[dict] = []
     seen_names: set[str] = set()
+    total_cost = 0.0
 
     for i, chunk in enumerate(chunks):
         prompt = f"""You are extracting faculty data from a medical school directory page.
@@ -121,25 +117,26 @@ def _extract_via_gpt4o(html: str, school: str, discipline: str, client: OpenAI) 
 School: {school}
 Discipline: {discipline}
 
-HTML chunk ({i + 1} of {len(chunks)}):
+Page text (chunk {i + 1} of {len(chunks)}):
 {chunk}
 
-Extract ALL faculty members visible in this chunk. Include only people with academic appointments (Professor, Associate Professor, Assistant Professor, Instructor, Lecturer, Researcher, Scientist, Attending). Exclude residents, fellows, nurses, and administrative staff.
+Extract faculty members visible in this chunk whose PRIMARY discipline is {discipline}. Include people with academic appointments (Professor, Associate Professor, Assistant Professor, Instructor, Lecturer, Researcher, Scientist, Attending) whose title or listed specialty indicates they work in {discipline}. Exclude anyone whose title shows a different primary specialty (e.g. "by courtesy" appointments, visiting faculty from unrelated fields, or people whose title names a different department as their main affiliation). Exclude residents, fellows, nurses, and administrative staff.
 
 Return ONLY a JSON array with no explanation. Each item must have:
 - "full_name": string
 - "title": their academic rank/title string (or null)
-- "profile_url": the full URL from the href attribute of their profile link (or null)
+- "profile_url": URL to their individual profile page if visible in the text (or null)
 
-If no faculty are visible in this chunk, return an empty array: []
+If no faculty are visible, return an empty array: []
 """
         try:
             response = client.chat.completions.create(
-                model="gpt-4o",
+                model=model,
                 messages=[{"role": "user", "content": prompt}],
-                max_tokens=4000,
+                max_tokens=8000,
                 temperature=0,
             )
+            total_cost += _log_cost(model, response.usage)
             raw = response.choices[0].message.content.strip()
             raw = raw.removeprefix("```json").removeprefix("```").removesuffix("```").strip()
             items = json.loads(raw)
@@ -154,6 +151,8 @@ If no faculty are visible in this chunk, return an empty array: []
         except Exception as e:
             print(f"    [GenericScraper] Chunk {i + 1} failed: {e}")
 
+    if len(chunks) > 1:
+        print(f"    [GenericScraper] Total extraction cost: ${total_cost:.5f}")
     return all_items
 
 
@@ -197,29 +196,122 @@ class GenericFacultyScraper(ScraperProvider):
         self,
         urls_path: str = "data/faculty_urls.json",
         request_delay: float = 1.0,
+        extraction_model: str = "gpt-4o",
     ) -> None:
+        self._urls_path = urls_path
         self._urls = _load_urls(urls_path)
         self._delay = request_delay
+        self._extraction_model = extraction_model
         self._client = OpenAI(api_key=os.environ.get("OPENAI_API_KEY"))
 
-    def get_faculty(self, school: str, discipline: str) -> list[FacultyRecord]:
-        entry = self._urls.get(discipline, {}).get(school)
-        if not entry or not entry.get("url"):
-            raise ValueError(
-                f"No faculty URL configured for ({school!r}, {discipline!r}). "
-                f"Run tools/discover_faculty_urls.py to add it."
+    def _affiliated_hospitals(self, school: str) -> list[str]:
+        """Return affiliated hospitals for a school from the xlsx lookup table."""
+        try:
+            import pandas as pd
+            xlsx_path = Path(__file__).parent.parent / "medical_schools_lookup.xlsx"
+            df = pd.read_excel(xlsx_path, sheet_name=0)
+            mask = df["School Name"].str.strip().str.lower() == school.strip().lower()
+            row = df[mask]
+            if row.empty:
+                return []
+            hospitals = []
+            primary = str(row.iloc[0].get("Primary Teaching Hospital", "") or "").strip()
+            if primary and primary.lower() != "nan":
+                hospitals.append(primary)
+            affiliated = str(row.iloc[0].get("Major Affiliated Hospitals / Health Systems", "") or "").strip()
+            if affiliated and affiliated.lower() != "nan":
+                hospitals += [h.strip() for h in affiliated.split(";") if h.strip()]
+            return hospitals
+        except Exception:
+            return []
+
+    def _discover_url(self, school: str, discipline: str) -> str | None:
+        """Ask GPT-4o with web search to find the faculty directory URL, then cache it."""
+        print(f"    [GenericScraper] Discovering URL for {school!r} / {discipline!r} via web search...")
+
+        hospitals = self._affiliated_hospitals(school)
+        hospital_hint = ""
+        if hospitals:
+            hospital_list = "; ".join(hospitals)
+            hospital_hint = (
+                f" Note: {discipline} faculty at {school} may be listed under an affiliated "
+                f"hospital rather than the medical school itself. Affiliated hospitals include: "
+                f"{hospital_list}. Search these sites if the medical school site has no directory."
             )
 
-        url = entry["url"]
+        prompt = (
+            f"Find the exact URL of the official faculty directory page for the {discipline} "
+            f"division at {school}. The page must list individual faculty members with names "
+            f"and titles — not a department homepage or research page. Must be publicly accessible."
+            f"{hospital_hint} "
+            f"Return ONLY a JSON object: {{\"url\": \"<url or null>\", \"notes\": \"<brief reason>\"}}"
+        )
+        try:
+            response = self._client.responses.create(
+                model="gpt-4o",
+                tools=[{"type": "web_search_preview"}],
+                input=prompt,
+            )
+            raw = ""
+            for block in response.output:
+                if hasattr(block, "content"):
+                    for part in block.content:
+                        if hasattr(part, "text"):
+                            raw += part.text
+            raw = raw.strip()
+            if raw.startswith("```"):
+                raw = raw.split("```")[1]
+                if raw.startswith("json"):
+                    raw = raw[4:]
+            import re as _re
+            match = _re.search(r'\{[^{}]+\}', raw.strip(), _re.DOTALL)
+            result = json.loads(match.group()) if match else json.loads(raw.strip())
+        except Exception as e:
+            print(f"    [GenericScraper] URL discovery failed: {e}")
+            return None
+
+        url = result.get("url")
+        notes = result.get("notes", "")
+        self._urls.setdefault(discipline, {})[school] = {
+            "url": url, "notes": notes, "verified": bool(url), "needs_review": not bool(url)
+        }
+        Path(self._urls_path).parent.mkdir(parents=True, exist_ok=True)
+        Path(self._urls_path).write_text(json.dumps(self._urls, indent=2))
+        if url:
+            print(f"    [GenericScraper] Discovered and cached: {url}")
+        else:
+            print(f"    [GenericScraper] Could not find URL: {notes}")
+        return url
+
+    def _get_url(self, school: str, discipline: str) -> str | None:
+        entry = self._urls.get(discipline, {}).get(school)
+        if entry and entry.get("url"):
+            return entry["url"]
+        return self._discover_url(school, discipline)
+
+    def get_faculty(self, school: str, discipline: str) -> list[FacultyRecord]:
+        url = self._get_url(school, discipline)
+        if not url:
+            return []
         time.sleep(self._delay)
 
         extracted: list[dict] = []
         try:
             print(f"    [GenericScraper] Fetching (Playwright): {url}")
             html = _fetch_html_playwright(url)
-            cleaned = _clean_html(html)
-            print(f"    [GenericScraper] Fetched {len(cleaned)} chars of cleaned HTML")
-            extracted = _extract_via_gpt4o(cleaned, school, discipline, self._client)
+            text = _html_to_text(html, base_url=url)
+            print(f"    [GenericScraper] Fetched {len(text)} chars of plain text")
+            # Follow pagination if present
+            extra_pages = _pagination_urls(html, url)
+            if extra_pages:
+                print(f"    [GenericScraper] Following {len(extra_pages)} pagination page(s)")
+            for page_url in extra_pages:
+                try:
+                    page_html = _fetch_html_playwright(page_url)
+                    text += "\n" + _html_to_text(page_html, base_url=page_url)
+                except Exception as pe:
+                    print(f"    [GenericScraper] Skipping pagination URL {page_url}: {pe}")
+            extracted = _extract_via_gpt4o(text, school, discipline, self._client, self._extraction_model)
         except Exception as e:
             print(f"    [GenericScraper] Playwright fetch failed ({e}), trying web search fallback...")
             try:
@@ -234,6 +326,10 @@ class GenericFacultyScraper(ScraperProvider):
                 continue
             name = item.get("full_name") or item.get("name") or ""
             if not name:
+                continue
+            title_lower = (item.get("title") or "").lower()
+            if "by courtesy" in title_lower or "courtesy appointment" in title_lower:
+                print(f"    [GenericScraper] Skipping courtesy appointment: {name} ({item.get('title')})")
                 continue
             records.append(FacultyRecord(
                 full_name=name.strip(),

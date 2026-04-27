@@ -26,7 +26,7 @@
     },
     "Stanford University School of Medicine": {
       "url": "https://profiles.stanford.edu/browse/school-of-medicine/pediatrics/endocrinology?p=1&ps=100",
-      "notes": "Stanford Profiles browse page — returns all 36 faculty in one request. med.stanford.edu/pedsendo/faculty.html only shows 32.",
+      "notes": "Stanford Profiles browse page \u2014 returns all 36 faculty in one request. med.stanford.edu/pedsendo/faculty.html only shows 32.",
       "verified": true,
       "needs_review": false
     },
@@ -123,6 +123,26 @@
     "Ohio State University College of Medicine / Nationwide Children's": {
       "url": "https://www.nationwidechildrens.org/for-medical-professionals/education-and-training/fellowship-programs/endocrinology-fellowship/meet-our-faculty",
       "notes": "This page lists multiple faculty members in the Pediatric Endocrinology division at Nationwide Children's Hospital, including their names and titles.",
+      "verified": true,
+      "needs_review": false
+    }
+  },
+  "Pediatric Cardiology": {
+    "Stanford University School of Medicine": {
+      "url": "https://med.stanford.edu/pedcard/about-us/Faculty.html",
+      "notes": "This page lists individual faculty members with names and titles for the Pediatric Cardiology division at Stanford University School of Medicine.",
+      "verified": true,
+      "needs_review": false
+    },
+    "Northwestern University Feinberg School of Medicine / Lurie Children's": {
+      "url": "https://www.luriechildrens.org/en/specialties-conditions/heart-center/specialists/",
+      "notes": "This page lists individual faculty members with names and titles in the Pediatric Cardiology division at Lurie Children's Hospital.",
+      "verified": true,
+      "needs_review": false
+    },
+    "Harvard Medical School": {
+      "url": "https://www.childrenshospital.org/departments/cardiology/meet-our-team",
+      "notes": "This page lists individual faculty members with names and titles in the Pediatric Cardiology division at Boston Children's Hospital, an affiliate of Harvard Medical School.",
       "verified": true,
       "needs_review": false
     }

@@ -37,38 +37,13 @@ from providers.qc import verify_faculty_roles
 client = OpenAI(api_key=os.environ.get("OPENAI_API_KEY"))
 SCOPUS_API_KEY = os.environ.get("SCOPUS_API_KEY")
 
-SCHOOLS = ["Stanford"]
+SCHOOLS = ["Stanford University School of Medicine"]
 DISCIPLINE = "Pediatric Endocrinology"
 MAX_WORKERS = 8  # Max concurrent faculty enrichments
 
 # CACHE_DB  = "faculty_cache.db"
 # TTL_DAYS  = {"nih": 30, "h_index": 90, "roles": 7}
 
-# NIH Reporter org name wildcards (all-caps, substring matched by NIH API).
-# Key = school name as used in faculty_urls.json.
-INSTITUTION_NIH_NAMES: dict[str, list[str]] = {
-    "Stanford University School of Medicine":                                          ["STANFORD", "LUCILE SALTER PACKARD"],
-    "University of California San Francisco School of Medicine":                       ["UNIVERSITY OF CALIFORNIA SAN FRANCISCO", "UCSF"],
-    "Harvard Medical School":                                                          ["HARVARD", "BOSTON CHILDREN"],
-    "Johns Hopkins School of Medicine":                                                ["JOHNS HOPKINS"],
-    "University of Pennsylvania Perelman School of Medicine":                          ["UNIVERSITY OF PENNSYLVANIA", "CHILDREN'S HOSPITAL OF PHILADELPHIA"],
-    "Columbia University Vagelos College of Physicians and Surgeons":                  ["COLUMBIA UNIVERSITY"],
-    "Duke University School of Medicine":                                              ["DUKE UNIVERSITY"],
-    "Washington University in St. Louis School of Medicine":                           ["WASHINGTON UNIVERSITY"],
-    "University of Michigan Medical School":                                           ["UNIVERSITY OF MICHIGAN"],
-    "Yale School of Medicine":                                                         ["YALE UNIVERSITY"],
-    "University of Colorado School of Medicine / Children's Hospital Colorado":        ["UNIVERSITY OF COLORADO", "CHILDREN'S HOSPITAL COLORADO"],
-    "University of Cincinnati College of Medicine / Cincinnati Children's":            ["UNIVERSITY OF CINCINNATI", "CINCINNATI CHILDREN"],
-    "Baylor College of Medicine / Texas Children's Hospital":                          ["BAYLOR COLLEGE OF MEDICINE", "TEXAS CHILDREN"],
-    "University of Washington School of Medicine / Seattle Children's":                ["UNIVERSITY OF WASHINGTON", "SEATTLE CHILDREN"],
-    "Children's National Hospital / George Washington University":                     ["CHILDREN'S NATIONAL", "GEORGE WASHINGTON UNIVERSITY"],
-    "Northwestern University Feinberg School of Medicine / Lurie Children's":          ["NORTHWESTERN UNIVERSITY", "LURIE CHILDREN"],
-    "NIH National Institute of Child Health and Human Development (NICHD)":            ["NICHD", "NATIONAL INSTITUTE OF CHILD HEALTH"],
-    "Keck School of Medicine USC / Children's Hospital Los Angeles":                   ["UNIVERSITY OF SOUTHERN CALIFORNIA", "CHILDREN'S HOSPITAL LOS ANGELES"],
-    "Emory University School of Medicine / Children's Healthcare of Atlanta":          ["EMORY UNIVERSITY", "CHILDREN'S HEALTHCARE OF ATLANTA"],
-    "University of Florida College of Medicine":                                       ["UNIVERSITY OF FLORIDA"],
-    "Ohio State University College of Medicine / Nationwide Children's":               ["OHIO STATE UNIVERSITY", "NATIONWIDE CHILDREN"],
-}
 
 # Scopus affiliation keyword (lowercase, matched against affiliation string).
 INSTITUTION_KEYWORDS: dict[str, str] = {
@@ -93,6 +68,14 @@ INSTITUTION_KEYWORDS: dict[str, str] = {
     "Emory University School of Medicine / Children's Healthcare of Atlanta":          "emory",
     "University of Florida College of Medicine":                                       "florida",
     "Ohio State University College of Medicine / Nationwide Children's":               "ohio state",
+    "UC San Diego School of Medicine / Rady Children's Hospital":                      "san diego",
+    "University of Pittsburgh School of Medicine / UPMC Children's Hospital":          "pittsburgh",
+    "David Geffen School of Medicine at UCLA / Mattel Children's Hospital":            "ucla",
+    "Vanderbilt University School of Medicine / Monroe Carell Jr. Children's":         "vanderbilt",
+    "Medical University of South Carolina":                                            "south carolina",
+    "UT Southwestern Medical Center / Children's Medical Center Dallas":               "southwestern",
+    "Dell Medical School, University of Texas at Austin / Dell Children's":            "texas austin",
+    "University of Utah School of Medicine / Intermountain Primary Children's":        "utah",
 }
 
 
@@ -129,7 +112,19 @@ def responses_web_search(prompt: str) -> str:
 
 def parse_json(raw: str) -> any:
     clean = raw.strip().removeprefix("```json").removeprefix("```").removesuffix("```").strip()
-    return json.loads(clean)
+    try:
+        return json.loads(clean)
+    except json.JSONDecodeError:
+        # Response may be truncated — extract the longest valid JSON array prefix
+        start = clean.find("[")
+        if start == -1:
+            return []
+        for end in range(len(clean), start, -1):
+            try:
+                return json.loads(clean[start:end])
+            except json.JSONDecodeError:
+                continue
+        return []
 
 
 # ─────────────────────────────────────────────
@@ -141,69 +136,6 @@ def parse_json(raw: str) -> any:
 # def cache_get(name, institution): ...
 # def cache_update(name, institution, fields): ...
 
-
-# ─────────────────────────────────────────────
-# HELPER: NIH Reporter API
-# ─────────────────────────────────────────────
-
-def get_nih_grants(full_name: str, school: str) -> list[str]:
-    """Queries NIH Reporter API for active grants by PI name and institution."""
-    t0 = time.time()
-    observe.metric("api_calls", sub="nih")
-    try:
-        parts = full_name.split()
-        parts = [p for p in parts if not any(c in p for c in ["MD", "PhD", "DO", "MPH", "MBA", "FAAP", "MS"])]
-        parts = [p.strip(".,") for p in parts if p.strip(".,")]
-
-        if len(parts) < 2:
-            return []
-
-        first_name = parts[0]
-        last_name = parts[-1]
-
-        org_names = INSTITUTION_NIH_NAMES.get(school, [school.upper().split("/")[0].strip()])
-
-        def query_nih(fn, ln):
-            payload = {
-                "criteria": {
-                    "pi_names": [{"first_name": fn, "last_name": ln}],
-                    "org_names": org_names,
-                },
-                "fields": ["project_num", "project_title", "fiscal_year", "award_amount", "project_start_date", "project_end_date"],
-                "limit": 100,
-                "offset": 0
-            }
-            r = requests.post("https://api.reporter.nih.gov/v2/projects/search", json=payload, timeout=15)
-            data = r.json()
-            results = data.get("results", [])
-            print(f"      [NIH] Querying: first={fn}, last={ln}, orgs={org_names} -> {len(results)} results (total={data.get('meta', {}).get('total', '?')})")
-            return results
-
-        # Primary query
-        results = query_nih(first_name, last_name)
-
-        seen_nums = set()
-        grants = []
-        for r in results:
-            num = r.get("project_num", "Unknown")
-            if num not in seen_nums:
-                seen_nums.add(num)
-                grants.append({
-                    "project_num": num,
-                    "title": r.get("project_title", "Unknown title")
-                })
-
-        observe.log("api_call", provider="nih", faculty=full_name,
-                    grants_found=len(grants),
-                    latency_ms=int((time.time() - t0) * 1000), status="ok")
-        return grants
-
-    except Exception as e:
-        observe.metric("api_errors", sub="nih")
-        observe.log("api_error", level="error", provider="nih", faculty=full_name,
-                    error=str(e), latency_ms=int((time.time() - t0) * 1000))
-        print(f"      [NIH] Error for {full_name}: {e}")
-        return []
 
 
 # ─────────────────────────────────────────────
@@ -307,16 +239,16 @@ def get_scopus_hindex(full_name: str, school: str) -> int | None:
 _scraper_provider = GenericFacultyScraper()
 
 
-def agent1_scrape(school_name: str, scraper=None) -> list[dict]:
+def agent1_scrape(school_name: str, scraper=None, discipline: str = DISCIPLINE) -> list[dict]:
     t0 = time.time()
-    observe.log("agent1_start", school=school_name, discipline=DISCIPLINE)
-    print(f"\n[Agent 1] Finding {school_name} {DISCIPLINE} faculty...")
+    observe.log("agent1_start", school=school_name, discipline=discipline)
+    print(f"\n[Agent 1] Finding {school_name} {discipline} faculty...")
 
     provider = scraper or _scraper_provider
     all_faculty: list[dict] = []
 
     try:
-        records = provider.get_faculty(school_name, DISCIPLINE)
+        records = provider.get_faculty(school_name, discipline)
         all_faculty.extend(records)
         print(f"  -> Found {len(records)} faculty (Playwright + GPT-4o HTML extraction)")
     except ValueError:
@@ -325,7 +257,7 @@ def agent1_scrape(school_name: str, scraper=None) -> list[dict]:
         prompt = f"""
 You are a research assistant building a faculty recruitment database.
 
-Search the web and find ALL {DISCIPLINE} faculty at {school_name} School of Medicine.
+Search the web and find ALL {discipline} faculty at {school_name} School of Medicine.
 Look at their official faculty directory page.
 
 For each faculty member, extract:
@@ -354,9 +286,18 @@ If a field is not available, use null.
         print(f"  [!] Scraper failed for {school_name}: {e}")
 
     # Deduplicate
+    _EXCLUDE_TITLE_KEYWORDS = ("emeritus", "emerita", "by courtesy", "courtesy")
+
+    def _is_excluded(f: dict) -> bool:
+        title = (f.get("title") or "").lower()
+        return any(kw in title for kw in _EXCLUDE_TITLE_KEYWORDS)
+
     seen: set[str] = set()
     deduped = []
     for f in all_faculty:
+        if _is_excluded(f):
+            print(f"  [Agent 1] Skipping '{f.get('full_name')}' (title: {f.get('title')})")
+            continue
         key = f.get("full_name", "").lower().strip()
         if key not in seen:
             seen.add(key)
@@ -392,9 +333,10 @@ def agent2_enrich(
     roles_provider=None,
     hindex_provider=None,
     on_enriched=None,
+    discipline: str = DISCIPLINE,
 ) -> dict:
     if nih_provider is None:
-        nih_provider = LiveNihProvider()
+        nih_provider = LiveNihProvider(discipline=discipline)
     if roles_provider is None:
         roles_provider = LiveRolesProvider(client)
     if hindex_provider is None:
@@ -440,11 +382,16 @@ def agent2_enrich(
             except Exception as e:
                 print(f"    [!] ProfileScraper error, falling back to LLM: {e}")
 
+    need_title = not faculty.get("title")  # True for manual lookup records
     fetch_keys = ["nih"] + ([] if profile_scraper_roles is not None else ["roles"])
     with ThreadPoolExecutor(max_workers=2) as _pool:
         futures_map = {"nih": _pool.submit(nih_provider.get_grants, name, school)}
         if profile_scraper_roles is None:
-            futures_map["roles"] = _pool.submit(roles_provider.get_roles, name, school, profile_url)
+            # Use get_roles_and_title when we need the rank (manual lookup), get_roles otherwise
+            if need_title:
+                futures_map["roles"] = _pool.submit(roles_provider.get_roles_and_title, name, school, profile_url)
+            else:
+                futures_map["roles"] = _pool.submit(roles_provider.get_roles, name, school, profile_url)
         fetch_results = []
         for key in fetch_keys:
             try:
@@ -461,6 +408,7 @@ def agent2_enrich(
         leadership_roles = [r for r in all_roles if r.get("category") == "leadership"]
         print(f"    -> [ProfileScraper] Editorial: {len(editorial_roles)}, Society: {len(society_roles)}, Training: {len(training_roles)}, Leadership: {len(leadership_roles)}")
 
+    extracted_title: str | None = None
     for key, result in zip(fetch_keys, fetch_results):
         if key == "nih":
             if isinstance(result, Exception):
@@ -474,7 +422,13 @@ def agent2_enrich(
             if isinstance(result, Exception):
                 print(f"    [!] Roles search failed for {name}: {result}")
             else:
-                all_roles        = result
+                # get_roles_and_title returns (title, roles); get_roles returns just roles
+                if need_title and isinstance(result, tuple):
+                    extracted_title, all_roles = result
+                    if extracted_title:
+                        print(f"    -> [LLM] Title found: {extracted_title}")
+                else:
+                    all_roles = result
                 editorial_roles  = [r for r in all_roles if r.get("category") == "editorial"]
                 society_roles    = [r for r in all_roles if r.get("category") == "society"]
                 training_roles   = [r for r in all_roles if r.get("category") == "training"]
@@ -485,6 +439,7 @@ def agent2_enrich(
     nih_grant_titles = " | ".join(g["title"] for g in nih_grants)
 
     nih_grant_count = len(nih_grants)
+    nih_institution_unconfirmed = any(g.get("institution_unconfirmed") for g in nih_grants)
 
     # --- Observability ---
     latency_ms = int((time.time() - t0) * 1000)
@@ -504,10 +459,12 @@ def agent2_enrich(
 
     return {
         **faculty,
+        "title": faculty.get("title") or extracted_title,
         "h_index": h_index,
         "nih_project_nums":  nih_project_nums,
         "nih_grant_titles":  nih_grant_titles,
         "nih_grant_count":   nih_grant_count,
+        "nih_institution_unconfirmed": nih_institution_unconfirmed,
         "editorial_roles":   editorial_roles,
         "society_roles":     society_roles,
         "training_roles":    training_roles,
@@ -523,6 +480,85 @@ def agent2_enrich(
 #   2. Faithfulness  — does evidence_text actually confirm the role?
 # Produces green / yellow / red per category and an overall signal.
 # ─────────────────────────────────────────────
+
+def _qc_cross_checks(results: list[dict]) -> None:
+    """
+    Run cohort-level QC checks after per-person verification:
+      1. Duplicate unique roles — flag if two people claim the same
+         singleton role (e.g. Division Chief) at the same org.
+      2. Completeness — flag high-profile faculty (h_index ≥ 30 or
+         nih_grant_count ≥ 5) who have zero roles found; likely a
+         scraping failure rather than genuinely no service activity.
+    Findings are printed and written into each faculty's qc dict
+    under "warnings".
+    """
+    # ── 1. Duplicate unique-role detection ───────────────────────────
+    SINGLETON_KEYWORDS = {
+        "chief", "chair", "president", "director", "dean",
+        "program director", "fellowship director",
+    }
+
+    # role_key → list of (name, category)
+    from collections import defaultdict
+    role_holders: dict[str, list[str]] = defaultdict(list)
+
+    for f in results:
+        name = f.get("full_name", "?")
+        for detail in (f.get("qc") or {}).get("role_details", []):
+            role_lower = detail.get("role", "").lower()
+            org_lower  = detail.get("org", "").lower()
+            if any(kw in role_lower for kw in SINGLETON_KEYWORDS):
+                key = f"{role_lower} @ {org_lower}"
+                role_holders[key].append(name)
+
+    duplicate_warnings: dict[str, list[str]] = {
+        k: v for k, v in role_holders.items() if len(v) > 1
+    }
+
+    if duplicate_warnings:
+        print("\n  [QC] ⚠ DUPLICATE SINGLETON ROLES DETECTED:")
+        for role_key, holders in duplicate_warnings.items():
+            print(f"       '{role_key}' claimed by: {', '.join(holders)}")
+
+    # Write duplicate warnings back into each affected faculty's qc dict
+    for f in results:
+        name = f.get("full_name", "?")
+        warnings = []
+        for role_key, holders in duplicate_warnings.items():
+            if name in holders:
+                others = [h for h in holders if h != name]
+                warnings.append(
+                    f"Role '{role_key}' also claimed by: {', '.join(others)}"
+                )
+        if warnings and f.get("qc"):
+            f["qc"]["warnings"] = f["qc"].get("warnings", []) + warnings
+
+    # ── 2. Completeness check ─────────────────────────────────────────
+    print("\n  [QC] Completeness check:")
+    for f in results:
+        name        = f.get("full_name", "?")
+        h_index     = f.get("h_index") or 0
+        grant_count = f.get("nih_grant_count") or 0
+        role_count  = sum(
+            len(f.get(f"{cat}_roles") or [])
+            for cat in ("editorial", "society", "leadership", "training")
+        )
+
+        is_senior = h_index >= 30 or grant_count >= 5
+        if is_senior and role_count == 0:
+            msg = (
+                f"SPARSE PROFILE — h_index={h_index}, grants={grant_count} "
+                f"but 0 roles found. Likely scraping failure."
+            )
+            print(f"       ⚠ {name}: {msg}")
+            if f.get("qc"):
+                f["qc"]["warnings"] = f["qc"].get("warnings", []) + [msg]
+                # Downgrade overall from green to yellow if vacuously green
+                if f["qc"].get("overall") == "green":
+                    f["qc"]["overall"] = "yellow"
+        else:
+            print(f"       ✓ {name}: {role_count} role(s), h={h_index}, grants={grant_count}")
+
 
 def agent3_qc(faculty_list: list[dict]) -> list[dict]:
     print(f"\n[Agent 3] Running QC on {len(faculty_list)} faculty members...")
@@ -549,7 +585,18 @@ def agent3_qc(faculty_list: list[dict]) -> list[dict]:
 
         results.append(faculty)
 
-    print(f"  -> QC complete. Green: {green}  Yellow: {yellow}  Red: {red}")
+    # Cohort-level checks
+    _qc_cross_checks(results)
+
+    # Recount after cross-checks may have downgraded some
+    green = yellow = red = 0
+    for f in results:
+        o = (f.get("qc") or {}).get("overall", "yellow")
+        if o == "green":    green  += 1
+        elif o == "yellow": yellow += 1
+        else:               red    += 1
+
+    print(f"\n  -> QC complete. Green: {green}  Yellow: {yellow}  Red: {red}")
     return results
 
 
@@ -644,6 +691,47 @@ def generate_faculty_summary(record: dict) -> str:
 # MAIN PIPELINE
 # ─────────────────────────────────────────────
 
+def run_pipeline_from_records(records, on_enriched=None, on_qc_complete=None, roles_provider=None, discipline: str = DISCIPLINE):
+    """Run Agent 2 (enrichment) + Agent 3 (QC) on a pre-built list of faculty records.
+
+    Records must have at minimum: full_name, school.
+    Returns the final QC'd list.
+    """
+    observe.start()
+    if not records:
+        print("\n[!] No records provided.")
+        return []
+
+    _enrich_start = time.time()
+    n = len(records)
+    print(f"\n[Agent 2] Enriching {n} faculty profiles ({MAX_WORKERS} workers)...")
+    enriched = [None] * n
+    _print_lock = threading.Lock()
+
+    with ThreadPoolExecutor(max_workers=MAX_WORKERS) as executor:
+        futures = {executor.submit(agent2_enrich, f, roles_provider=roles_provider, discipline=discipline): i for i, f in enumerate(records)}
+        for completed, future in enumerate(as_completed(futures), 1):
+            idx = futures[future]
+            result = future.result()
+            result["summary"] = generate_faculty_summary(result)
+            enriched[idx] = result
+            with _print_lock:
+                print(f"  [Progress] {completed}/{n} — {result.get('full_name', 'Unknown')}")
+            if on_enriched:
+                on_enriched(result, completed, n)
+
+    _enrich_elapsed = time.time() - _enrich_start
+    print(f"\n[Timing] Enrichment: {_enrich_elapsed:.1f}s for {n} faculty ({_enrich_elapsed/n:.1f}s avg)")
+
+    final = agent3_qc(enriched)
+
+    if on_qc_complete:
+        for record in final:
+            on_qc_complete(record)
+
+    return final
+
+
 def run_pipeline(schools=None, discipline=None, on_enriched=None, on_qc_complete=None):
     t_start = time.time()
     observe.start()
@@ -656,10 +744,12 @@ def run_pipeline(schools=None, discipline=None, on_enriched=None, on_qc_complete
         print("Warning: SCOPUS_API_KEY not set — H-index will be skipped.")
         print("Run: export SCOPUS_API_KEY='your-scopus-key'")
 
+    _roles_provider = LiveRolesProvider(client, discipline=_discipline)
+
     all_faculty = []
 
     for school in _schools:
-        faculty = agent1_scrape(school)
+        faculty = agent1_scrape(school, discipline=_discipline)
         all_faculty.extend(faculty)
         time.sleep(1)
 
@@ -678,38 +768,14 @@ def run_pipeline(schools=None, discipline=None, on_enriched=None, on_qc_complete
         print("\n[!] No faculty found. Check your API key and try again.")
         return
 
-    _enrich_start = time.time()
-    print(f"\n[Agent 2] Enriching {len(deduped)} faculty profiles ({MAX_WORKERS} workers)...")
-    enriched = [None] * len(deduped)
-    _print_lock = threading.Lock()
-
-    with ThreadPoolExecutor(max_workers=MAX_WORKERS) as executor:
-        futures = {executor.submit(agent2_enrich, f): i for i, f in enumerate(deduped)}
-        for completed, future in enumerate(as_completed(futures), 1):
-            idx = futures[future]
-            result = future.result()
-            result["summary"] = generate_faculty_summary(result)
-            enriched[idx] = result
-            with _print_lock:
-                print(f"  [Progress] {completed}/{len(deduped)} — {result.get('full_name', 'Unknown')}")
-            if on_enriched:
-                on_enriched(result, completed, len(deduped))
-
-    _enrich_elapsed = time.time() - _enrich_start
-    print(f"\n[Timing] Enrichment phase: {_enrich_elapsed:.1f}s for {len(deduped)} faculty ({_enrich_elapsed/len(deduped):.1f}s avg per faculty)")
-
-    final = agent3_qc(enriched)
-    # summaries already generated per-faculty in the enrichment loop above
-
-    # Push QC results back to the UI now that all records have qc attached
-    if on_qc_complete:
-        for record in final:
-            on_qc_complete(record)
+    final = run_pipeline_from_records(deduped, on_enriched=on_enriched, on_qc_complete=on_qc_complete, roles_provider=_roles_provider, discipline=_discipline)
 
     # Flatten nested qc dict into top-level columns for the CSV
     for record in final:
         qc = record.get("qc") or {}
         record["qc_overall"]               = qc.get("overall", "")
+        record["qc_nih_confidence"]        = qc.get("nih_confidence", "")
+        record["qc_hindex_confidence"]     = qc.get("hindex_confidence", "")
         record["qc_editorial_confidence"]  = qc.get("editorial_confidence", "")
         record["qc_society_confidence"]    = qc.get("society_confidence", "")
         record["qc_leadership_confidence"] = qc.get("leadership_confidence", "")
@@ -775,7 +841,7 @@ def run_pipeline(schools=None, discipline=None, on_enriched=None, on_qc_complete
     print(f"   Cache hit (NIH):   {m['cache_hit_rate_nih']:.0%}")
     print(f"   Cache hit (roles): {m['cache_hit_rate_roles']:.0%}")
 
-    summary_cols = ["full_name", "school", "title", "h_index", "qc_overall", "qc_editorial_confidence", "qc_society_confidence", "qc_leadership_confidence", "qc_training_confidence"]
+    summary_cols = ["full_name", "school", "title", "h_index", "nih_grant_count", "qc_overall", "qc_nih_confidence", "qc_hindex_confidence", "qc_editorial_confidence", "qc_society_confidence", "qc_leadership_confidence", "qc_training_confidence"]
     available = [c for c in summary_cols if c in df.columns]
     print("\n--- PREVIEW (first 10 rows) ---")
     print(df[available].head(10).to_string(index=False))
