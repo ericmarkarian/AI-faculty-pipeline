@@ -793,9 +793,14 @@ def _name_matches(first: str, last: str, entry: dict) -> bool:
 
 def _scopus_get(url: str, params: dict, max_retries: int = 4) -> requests.Response:
     """GET with exponential backoff on 429 rate-limit responses."""
+    import os
+    headers = {"Accept": "application/json"}
+    insttoken = os.environ.get("SCOPUS_INSTTOKEN")
+    if insttoken:
+        headers["X-ELS-Insttoken"] = insttoken
     delay = 10.0
     for attempt in range(max_retries):
-        resp = requests.get(url, params=params, headers={"Accept": "application/json"}, timeout=15)
+        resp = requests.get(url, params=params, headers=headers, timeout=15)
         if resp.status_code != 429:
             resp.raise_for_status()
             return resp
