@@ -145,6 +145,15 @@ If no qualifying roles are found, return {{"title": null, "roles": []}}.
 No markdown fences, no explanation — only the JSON object.
 """
 
+_TITLE_PROMPT = """\
+Look up the faculty profile page for {name} at {school}.
+Return ONLY a JSON object with one key:
+- "title": their current academic rank exactly as listed on their institutional profile \
+(e.g. "Professor", "Associate Professor", "Assistant Professor", "Clinical Professor", \
+"Instructor", "Lecturer"). Return null if not clearly stated.
+
+No markdown fences, no explanation — only the JSON object.
+"""
 
 def _clean_name_parts(full_name: str) -> list[str]:
     parts = [p.strip(".,") for p in full_name.split() if p.strip(".,") not in _CREDENTIAL_SUFFIXES]
@@ -712,10 +721,25 @@ class LiveRolesProvider(RolesProvider):
         return self._process_roles(self._fetch(name, school))
 
     def get_roles_and_title(self, name: str, school: str, profile_url: str = "") -> tuple[str | None, list[RoleEvidence]]:
-        """Single web search call returning (academic_title, roles)."""
-        parsed = self._fetch(name, school)
-        title = parsed.get("title") or None
-        return title, self._process_roles(parsed)
+        """Two web search calls: one for roles, one dedicated title lookup."""
+        roles = self._process_roles(self._fetch(name, school))
+        prompt = _TITLE_PROMPT.format(name=name, school=school)
+        response = self._client.responses.create(
+            model=_LIVE_MODEL,
+            tools=[{"type": "web_search_preview"}],
+            input=[{"role": "user", "content": prompt}],
+        )
+        raw = ""
+        for block in response.output:
+            if hasattr(block, "content"):
+                for item in block.content:
+                    if hasattr(item, "text"):
+                        raw += item.text
+        try:
+            title = _parse_json(raw).get("title") or None
+        except Exception:
+            title = None
+        return title, roles
 
 
 # ── Scoring helpers (used by LiveHIndexProvider) ──────────────────────────────
