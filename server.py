@@ -138,9 +138,10 @@ def start_run():
             return jsonify({"error": "Pipeline already running"}), 409
         _pipeline_running = True
 
-    data       = request.json or {}
-    schools    = _normalize_schools(data.get("schools") or ["Stanford"])
-    discipline = data.get("discipline") or "Pediatric Endocrinology"
+    data           = request.json or {}
+    schools        = _normalize_schools(data.get("schools") or ["Stanford"])
+    discipline     = data.get("discipline") or "Pediatric Endocrinology"
+    considerations = data.get("considerations") or ""
     _run_queue = queue.Queue()
 
     def on_enriched(faculty_record: dict, completed: int, total: int):
@@ -165,6 +166,7 @@ def start_run():
                 discipline=discipline,
                 on_enriched=on_enriched,
                 on_qc_complete=on_qc_complete,
+                considerations=considerations,
             )
         except Exception as exc:
             _run_queue.put({"type": "error", "message": str(exc)})
@@ -213,9 +215,10 @@ def start_names_run():
             return jsonify({"error": "Names pipeline already running"}), 409
         _names_pipeline_running = True
 
-    data       = request.json or {}
-    names      = data.get("names") or []
-    discipline = data.get("discipline") or faculty_search.DISCIPLINE
+    data           = request.json or {}
+    names          = data.get("names") or []
+    discipline     = data.get("discipline") or ""
+    considerations = data.get("considerations") or ""
 
     records = [
         {
@@ -258,6 +261,7 @@ def start_names_run():
                 discipline=discipline,
                 on_enriched=on_enriched,
                 on_qc_complete=on_qc_complete,
+                considerations=considerations,
             )
         except Exception as exc:
             _names_run_queue.put({"type": "error", "message": str(exc)})

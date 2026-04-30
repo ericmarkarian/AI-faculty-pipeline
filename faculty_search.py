@@ -28,7 +28,7 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 load_dotenv()
 
 import observe
-from providers.live import LiveNihProvider, LiveRolesProvider, LiveHIndexProvider
+from providers.live import LiveNihProvider, LiveRolesProvider, LiveHIndexProvider, merge_specialty_considerations
 from providers.generic_faculty_scraper import GenericFacultyScraper
 from providers.profile_scrapers import StanfordProfileScraper, TavilyProfileScraper
 from providers.profile_scrapers.base import ProfileScraper
@@ -691,7 +691,7 @@ def generate_faculty_summary(record: dict) -> str:
 # MAIN PIPELINE
 # ─────────────────────────────────────────────
 
-def run_pipeline_from_records(records, on_enriched=None, on_qc_complete=None, roles_provider=None, discipline: str = DISCIPLINE):
+def run_pipeline_from_records(records, on_enriched=None, on_qc_complete=None, roles_provider=None, discipline: str = DISCIPLINE, considerations: str = ""):
     """Run Agent 2 (enrichment) + Agent 3 (QC) on a pre-built list of faculty records.
 
     Records must have at minimum: full_name, school.
@@ -701,6 +701,15 @@ def run_pipeline_from_records(records, on_enriched=None, on_qc_complete=None, ro
     if not records:
         print("\n[!] No records provided.")
         return []
+
+    if considerations and roles_provider is None:
+        if discipline:
+            # Mass search: merge into the specialty .md file permanently
+            merge_specialty_considerations(discipline, considerations, client)
+            roles_provider = LiveRolesProvider(client, discipline=discipline)
+        else:
+            # Manual lookup: no specialty — inject considerations as one-time prompt guidance
+            roles_provider = LiveRolesProvider(client, discipline="", considerations=considerations)
 
     _enrich_start = time.time()
     n = len(records)
@@ -732,7 +741,7 @@ def run_pipeline_from_records(records, on_enriched=None, on_qc_complete=None, ro
     return final
 
 
-def run_pipeline(schools=None, discipline=None, on_enriched=None, on_qc_complete=None):
+def run_pipeline(schools=None, discipline=None, on_enriched=None, on_qc_complete=None, considerations: str = ""):
     t_start = time.time()
     observe.start()
     _schools = schools or SCHOOLS
@@ -744,6 +753,8 @@ def run_pipeline(schools=None, discipline=None, on_enriched=None, on_qc_complete
         print("Warning: SCOPUS_API_KEY not set — H-index will be skipped.")
         print("Run: export SCOPUS_API_KEY='your-scopus-key'")
 
+    if considerations:
+        merge_specialty_considerations(_discipline, considerations, client)
     _roles_provider = LiveRolesProvider(client, discipline=_discipline)
 
     all_faculty = []
@@ -768,7 +779,7 @@ def run_pipeline(schools=None, discipline=None, on_enriched=None, on_qc_complete
         print("\n[!] No faculty found. Check your API key and try again.")
         return
 
-    final = run_pipeline_from_records(deduped, on_enriched=on_enriched, on_qc_complete=on_qc_complete, roles_provider=_roles_provider, discipline=_discipline)
+    final = run_pipeline_from_records(deduped, on_enriched=on_enriched, on_qc_complete=on_qc_complete, roles_provider=_roles_provider, discipline=_discipline, considerations="")
 
     # Flatten nested qc dict into top-level columns for the CSV
     for record in final:

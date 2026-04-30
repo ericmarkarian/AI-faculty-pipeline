@@ -71,6 +71,7 @@ const QS = {
   yellow: { bg:'var(--qy-bg)', bd:'var(--qy-bd)', tx:'var(--qy-tx)' },
   red:    { bg:'var(--qr-bg)', bd:'var(--qr-bd)', tx:'var(--qr-tx)' },
 };
+const QC_LABEL = { green:'High', yellow:'Medium', red:'Low' };
 
 function QcBadge({ overall, onClick }) {
   if (!overall) return <span style={{color:'var(--ink3)',fontSize:12}}>—</span>;
@@ -89,13 +90,13 @@ function QcBadge({ overall, onClick }) {
       onMouseLeave={e=>{ e.currentTarget.style.opacity='1'; e.currentTarget.style.transform='none'; }}
     >
       <span style={{width:5,height:5,borderRadius:'50%',background:'currentColor',flexShrink:0}}/>
-      {overall}
+      {QC_LABEL[overall]||overall}
     </button>
   );
 }
 
 /* ── Faculty Detail Overlay ── */
-function FacultyDetail({ faculty, onClose }) {
+function FacultyDetail({ faculty, onClose, onOpenQc }) {
   const qc = faculty.qc || {};
   const h = faculty.h_index;
   const cats = [
@@ -255,24 +256,79 @@ function FacultyDetail({ faculty, onClose }) {
             QC Confidence
             <QcBadge overall={qc.overall}/>
           </div>
-          {['editorial','society','leadership','training'].map(cat=>(
-            <div key={cat} style={{display:'inline-flex',alignItems:'center',gap:6,
-              marginRight:16,marginBottom:8}}>
-              <span style={{fontSize:11,color:'var(--ink3)',textTransform:'capitalize'}}>{cat}</span>
-              <QcBadge overall={qc[`${cat}_confidence`]}/>
-            </div>
-          ))}
+          <div style={{display:'flex',flexWrap:'wrap',alignItems:'center',gap:8,marginBottom:12}}>
+            {['editorial','society','leadership','training'].map(cat=>(
+              <div key={cat} style={{display:'inline-flex',alignItems:'center',gap:5}}>
+                <span style={{fontSize:11,color:'var(--ink3)',textTransform:'capitalize'}}>{cat}</span>
+                <QcBadge overall={qc[`${cat}_confidence`]}/>
+              </div>
+            ))}
+          </div>
+          {qc.overall&&onOpenQc&&(
+            <button onClick={onOpenQc} style={{
+              fontSize:11,fontWeight:600,color:'var(--red)',background:'none',border:'none',
+              padding:0,cursor:'pointer',textDecoration:'underline',letterSpacing:'0.02em',
+            }}>View full QC report →</button>
+          )}
         </div>
       </div>
     </div>
   );
 }
 
-/* ── QC Modal (full detail with role-by-role breakdown) ── */
+/* ── QC Modal ── */
+function QcSection({ label, badge, children, defaultOpen=false }) {
+  const [open,setOpen] = useState(defaultOpen);
+  const hasContent = React.Children.count(children) > 0;
+  return (
+    <div style={{borderBottom:'1px solid var(--border-sub)'}}>
+      <button onClick={()=>setOpen(o=>!o)} style={{
+        width:'100%',display:'flex',alignItems:'center',justifyContent:'space-between',
+        padding:'13px 28px',background:'none',border:'none',cursor:'pointer',
+        transition:'background 0.12s',
+      }}
+        onMouseEnter={e=>e.currentTarget.style.background='var(--surface)'}
+        onMouseLeave={e=>e.currentTarget.style.background='none'}
+      >
+        <div style={{display:'flex',alignItems:'center',gap:10}}>
+          <span style={{fontSize:12,fontWeight:600,color:'var(--ink)',textTransform:'capitalize',
+            letterSpacing:'0.02em'}}>{label}</span>
+          <QcBadge overall={badge}/>
+        </div>
+        <span style={{fontSize:14,color:'var(--ink3)',transition:'transform 0.2s',
+          transform:open?'rotate(180deg)':'none'}}>▾</span>
+      </button>
+      {open&&(
+        <div style={{padding:'4px 28px 16px'}}>
+          {hasContent ? children
+            : <div style={{fontSize:12,color:'var(--ink3)',padding:'8px 0'}}>No roles found.</div>
+          }
+        </div>
+      )}
+    </div>
+  );
+}
+
+function CheckRow({ label, value }) {
+  const color = value===true?'var(--qg-tx)':value===false?'var(--qr-tx)':'var(--ink3)';
+  const icon  = value===true?'✓':value===false?'✗':'—';
+  return (
+    <span style={{display:'inline-flex',alignItems:'center',gap:4,fontSize:11,color:'var(--ink2)'}}>
+      <span style={{fontWeight:600}}>{label}</span>
+      <span style={{color,fontWeight:700}}>{icon}</span>
+    </span>
+  );
+}
+
 function QcModal({ faculty, onClose }) {
   const qc = faculty.qc || {};
   const details = qc.role_details || [];
   const cats = ['editorial','society','leadership','training'];
+  const grants = useMemo(()=>{
+    const titles=(faculty.nih_grant_titles||'').split('|').map(s=>s.trim()).filter(Boolean);
+    const nums=(faculty.nih_project_nums||'').split(',').map(s=>s.trim()).filter(Boolean);
+    return titles.map((t,i)=>({title:t,num:nums[i]||''}));
+  },[faculty]);
 
   useEffect(()=>{
     const h=e=>{ if(e.key==='Escape') onClose(); };
@@ -287,23 +343,25 @@ function QcModal({ faculty, onClose }) {
       display:'flex',alignItems:'center',justifyContent:'center',padding:24,
     }}>
       <div onClick={e=>e.stopPropagation()} style={{
-        background:'#fff',width:'100%',maxWidth:640,
+        background:'#fff',width:'100%',maxWidth:580,
         maxHeight:'86vh',overflow:'auto',
         border:'1px solid var(--border)',borderRadius:10,
         boxShadow:'0 32px 80px oklch(16% 0.022 25 / 0.18)',
         animation:'zoomIn 0.24s cubic-bezier(0.16,1,0.3,1)',
       }}>
+
+        {/* Header */}
         <div style={{padding:'20px 28px',borderBottom:'1px solid var(--border-sub)',
           display:'flex',alignItems:'flex-start',justifyContent:'space-between',gap:16}}>
           <div>
             <div style={{fontSize:10,fontWeight:700,color:'var(--ink3)',textTransform:'uppercase',
-              letterSpacing:'0.12em',marginBottom:6}}>QC Confidence Report</div>
+              letterSpacing:'0.12em',marginBottom:6}}>QC Report</div>
             <div style={{fontFamily:"'Spectral',serif",fontStyle:'italic',fontSize:19,
               color:'var(--ink)',lineHeight:1.2}}>{faculty.full_name}</div>
             <div style={{fontSize:12,color:'var(--ink2)',marginTop:3}}>{faculty.school}</div>
           </div>
           <div style={{display:'flex',gap:14,flexShrink:0,alignItems:'flex-start'}}>
-            <div>
+            <div style={{textAlign:'right'}}>
               <div style={{fontSize:10,color:'var(--ink3)',textTransform:'uppercase',
                 letterSpacing:'0.08em',marginBottom:5}}>Overall</div>
               <QcBadge overall={qc.overall}/>
@@ -315,77 +373,104 @@ function QcModal({ faculty, onClose }) {
             >✕</button>
           </div>
         </div>
-        <div style={{padding:'12px 28px',borderBottom:'1px solid var(--border-sub)',
-          display:'flex',gap:14,flexWrap:'wrap',alignItems:'center'}}>
-          {cats.map(cat=>(
-            <div key={cat} style={{display:'flex',alignItems:'center',gap:6}}>
-              <span style={{fontSize:10,color:'var(--ink3)',textTransform:'capitalize',fontWeight:600,
-                letterSpacing:'0.04em'}}>{cat}</span>
-              <QcBadge overall={qc[`${cat}_confidence`]}/>
-            </div>
-          ))}
-        </div>
-        <div style={{padding:'14px 28px',background:'var(--surface)',borderBottom:'1px solid var(--border-sub)'}}>
-          <div style={{fontSize:10,fontWeight:700,color:'var(--ink2)',textTransform:'uppercase',
-            letterSpacing:'0.08em',marginBottom:5}}>How confidence is assigned</div>
-          <div style={{fontSize:12,color:'var(--ink2)',lineHeight:1.75,maxWidth:'64ch'}}>
-            Each role is verified for <strong style={{color:'var(--ink)'}}>URL liveness</strong> and{' '}
-            <strong style={{color:'var(--ink)'}}>faithfulness</strong> via independent AI judge.{' '}
-            <span style={{color:'var(--qg-tx)',fontWeight:600}}>Green</span> = confirmed ·{' '}
-            <span style={{color:'var(--qy-tx)',fontWeight:600}}>Yellow</span> = uncertain ·{' '}
-            <span style={{color:'var(--qr-tx)',fontWeight:600}}>Red</span> = contradicted
+
+        {/* How it works blurb */}
+        <div style={{padding:'10px 28px',background:'var(--surface)',borderBottom:'1px solid var(--border-sub)'}}>
+          <div style={{fontSize:11,color:'var(--ink2)',lineHeight:1.7}}>
+            Each role is verified against three independent checks: whether the source URL resolves,
+            whether the person's name appears on that page, and whether the role is mentioned there.
+            {' '}<span style={{color:'var(--qg-tx)',fontWeight:600}}>High</span> = all three confirmed ·{' '}
+            <span style={{color:'var(--qy-tx)',fontWeight:600}}>Medium</span> = partial evidence ·{' '}
+            <span style={{color:'var(--qr-tx)',fontWeight:600}}>Low</span> = unverifiable. Click a section to expand.
           </div>
         </div>
-        <div style={{padding:'20px 28px'}}>
-          {details.length===0
-            ?<div style={{fontSize:13,color:'var(--ink3)',textAlign:'center',padding:'24px 0'}}>No roles were checked.</div>
-            :cats.map(cat=>{
-                const cr=details.filter(r=>r.category===cat);
-                if(!cr.length) return null;
+
+        {/* Role categories */}
+        {cats.map(cat=>{
+          const cr = details.filter(r=>r.category===cat);
+          return (
+            <QcSection key={cat} label={`${cat} roles`} badge={qc[`${cat}_confidence`]}>
+              {cr.map((r,i)=>{
+                const q=QS[r.status]||{};
                 return (
-                  <div key={cat} style={{marginBottom:22}}>
-                    <div style={{fontSize:10,fontWeight:700,color:'var(--ink2)',textTransform:'uppercase',
-                      letterSpacing:'0.10em',marginBottom:8,display:'flex',alignItems:'center',gap:10}}>
-                      {cat}<QcBadge overall={qc[`${cat}_confidence`]}/>
+                  <div key={i} style={{
+                    border:`1px solid ${q.bd||'var(--border)'}`,
+                    background:q.bg||'var(--surface)',
+                    borderRadius:6,padding:'10px 13px',marginBottom:7,
+                  }}>
+                    <div style={{display:'flex',alignItems:'flex-start',
+                      justifyContent:'space-between',gap:8,marginBottom:8}}>
+                      <div style={{fontSize:12,lineHeight:1.4}}>
+                        <span style={{fontWeight:600,color:'var(--ink)'}}>{r.role}</span>
+                        <span style={{color:'var(--ink2)'}}> · {r.org}</span>
+                      </div>
+                      <QcBadge overall={r.status}/>
                     </div>
-                    {cr.map((r,i)=>{
-                      const q=QS[r.status]||{};
-                      return (
-                        <div key={i} style={{
-                          border:`1px solid ${q.bd||'var(--border)'}`,
-                          background:q.bg||'var(--surface)',
-                          borderRadius:6,padding:'11px 14px',marginBottom:7,
-                        }}>
-                          <div style={{display:'flex',alignItems:'flex-start',
-                            justifyContent:'space-between',gap:8,marginBottom:7}}>
-                            <div style={{fontSize:13,lineHeight:1.4}}>
-                              <span style={{fontWeight:600,color:'var(--ink)'}}>{r.role}</span>
-                              <span style={{color:'var(--ink2)'}}> · {r.org}</span>
-                            </div>
-                            <QcBadge overall={r.status}/>
-                          </div>
-                          <div style={{display:'flex',gap:18}}>
-                            <span style={{fontSize:11,color:'var(--ink2)'}}>
-                              <span style={{fontWeight:600}}>URL </span>
-                              <span style={{color:r.url_alive===true?'var(--qg-tx)':r.url_alive===false?'var(--qr-tx)':'var(--qy-tx)',fontWeight:500}}>
-                                {r.url_alive===true?'Alive ✓':r.url_alive===false?'Dead ✗':'No URL'}
-                              </span>
-                            </span>
-                            <span style={{fontSize:11,color:'var(--ink2)'}}>
-                              <span style={{fontWeight:600}}>Faithfulness </span>
-                              <span style={{color:r.faithfulness==='CONFIRMED'?'var(--qg-tx)':r.faithfulness==='CONTRADICTED'?'var(--qr-tx)':'var(--qy-tx)',fontWeight:500}}>
-                                {r.faithfulness}
-                              </span>
-                            </span>
-                          </div>
-                        </div>
-                      );
-                    })}
+                    <div style={{display:'flex',gap:16,flexWrap:'wrap',marginBottom:r.source_url?7:0}}>
+                      <CheckRow label="URL alive" value={r.url_alive}/>
+                      <CheckRow label="Name on page" value={r.name_on_page}/>
+                      <CheckRow label="Role mentioned" value={r.role_on_page}/>
+                      {r.negation_detected&&(
+                        <span style={{fontSize:11,color:'var(--qy-tx)',fontWeight:600}}>
+                          ⚠ Evidence suggests role may be past or inactive
+                        </span>
+                      )}
+                    </div>
+                    {r.source_url&&(
+                      <a href={r.source_url} target="_blank" rel="noreferrer"
+                        style={{fontSize:11,color:'var(--red)',wordBreak:'break-all',
+                          textDecoration:'none',display:'block',marginTop:4}}
+                        onMouseEnter={e=>e.currentTarget.style.textDecoration='underline'}
+                        onMouseLeave={e=>e.currentTarget.style.textDecoration='none'}
+                      >↗ View source</a>
+                    )}
+                    {r.evidence_snippet&&(
+                      <div style={{marginTop:7,padding:'7px 9px',background:'oklch(97% 0 0)',
+                        borderRadius:4,fontSize:11,color:'var(--ink2)',lineHeight:1.6,
+                        fontFamily:'monospace',borderLeft:'2px solid var(--border)'}}>
+                        {r.evidence_snippet}
+                      </div>
+                    )}
                   </div>
                 );
-              })
+              })}
+            </QcSection>
+          );
+        })}
+
+        {/* NIH */}
+        <QcSection label="NIH Grants" badge={qc.nih_confidence}>
+          {qc.nih_confidence==='yellow'&&(
+            <div style={{padding:'8px 10px',marginBottom:10,borderRadius:6,
+              background:'var(--qy-bg)',border:'1px solid var(--qy-bd)',
+              fontSize:12,color:'var(--qy-tx)',fontWeight:500}}>
+              ⚠ Grants found but institution not confirmed — may be from a previous institution.
+              Human review recommended.
+            </div>
+          )}
+          {grants.length===0
+            ?<div style={{fontSize:12,color:'var(--ink3)'}}>No NIH grants found.</div>
+            :grants.map((g,i)=>(
+              <div key={i} style={{fontSize:12,color:'var(--ink)',marginBottom:5,lineHeight:1.5}}>
+                {g.num&&<span style={{fontFamily:'monospace',color:'var(--ink3)',marginRight:8,fontSize:11}}>{g.num}</span>}
+                {g.title}
+              </div>
+            ))
           }
-        </div>
+        </QcSection>
+
+        {/* H-index */}
+        <QcSection label="H-Index" badge={qc.hindex_confidence}>
+          {faculty.h_index!=null
+            ?<div style={{fontSize:12,color:'var(--ink)'}}>
+                H-index <strong>{faculty.h_index}</strong> — retrieved from Scopus.
+              </div>
+            :<div style={{fontSize:12,color:'var(--ink3)'}}>
+                Not found on Scopus — manual verification may be needed.
+              </div>
+          }
+        </QcSection>
+
       </div>
     </div>
   );
@@ -867,6 +952,7 @@ function App() {
   const esRef = useRef(null);
 
   /* ── Name Lookup tab state ── */
+  const [nlSpecialty,setNlSpecialty]   = useState('');
   const [nlInputMode,setNlInputMode]   = useState('csv');
   const [nlParsed,setNlParsed]         = useState([]);
   const [nlParseError,setNlParseError] = useState('');
@@ -887,6 +973,10 @@ function App() {
   const [nlDetail,setNlDetail]         = useState(null);
   const nlEsRef = useRef(null);
 
+  /* ── Search guidance (both tabs) ── */
+  const [considerations,setConsiderations]     = useState('');
+  const [nlConsiderations,setNlConsiderations] = useState('');
+
   const hasRun = loading || results.length > 0 || ran;
   const canRun = selected.length > 0 && specialty && !loading;
 
@@ -896,7 +986,7 @@ function App() {
     setProgress({done:0,total:0,phase:`Scraping ${selected.length} institution${selected.length>1?'s':''}…`});
     if(esRef.current){ esRef.current.close(); esRef.current=null; }
     try {
-      const resp=await fetch('/api/run',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({schools:selected,discipline:specialty})});
+      const resp=await fetch('/api/run',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({schools:selected,discipline:specialty,considerations})});
       if(!resp.ok){ const err=await resp.json(); setErrorMsg(err.error||'Server error'); setLoading(false); return; }
     } catch(e){ setErrorMsg('Could not reach server. Is server.py running?'); setLoading(false); return; }
     const es=new EventSource('/api/stream'); esRef.current=es;
@@ -990,7 +1080,7 @@ function App() {
     setNlProgress({done:0,total:0,phase:`Looking up ${nlParsed.length} ${nlParsed.length===1?'person':'people'}…`});
     if(nlEsRef.current){ nlEsRef.current.close(); nlEsRef.current=null; }
     try {
-      const resp=await fetch('/api/run-names',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({names:nlParsed})});
+      const resp=await fetch('/api/run-names',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({names:nlParsed,discipline:nlSpecialty,considerations:nlConsiderations})});
       if(!resp.ok){ const err=await resp.json(); setNlErrorMsg(err.error||'Server error'); setNlLoading(false); return; }
     } catch(e){ setNlErrorMsg('Could not reach server. Is server.py running?'); setNlLoading(false); return; }
     const es=new EventSource('/api/stream-names'); nlEsRef.current=es;
@@ -1117,9 +1207,9 @@ function App() {
 
   return (
     <div style={{minHeight:'100vh',background:'var(--bg)',display:'flex',flexDirection:'column'}}>
-      {detailFaculty&&<FacultyDetail faculty={detailFaculty} onClose={()=>setDetail(null)}/>}
+      {detailFaculty&&<FacultyDetail faculty={detailFaculty} onClose={()=>setDetail(null)} onOpenQc={()=>setQcModal(detailFaculty)}/>}
       {qcModal&&<QcModal faculty={qcModal} onClose={()=>setQcModal(null)}/>}
-      {nlDetail&&<FacultyDetail faculty={nlDetail} onClose={()=>setNlDetail(null)}/>}
+      {nlDetail&&<FacultyDetail faculty={nlDetail} onClose={()=>setNlDetail(null)} onOpenQc={()=>setNlQcModal(nlDetail)}/>}
       {nlQcModal&&<QcModal faculty={nlQcModal} onClose={()=>setNlQcModal(null)}/>}
 
       {/* Topbar */}
@@ -1179,6 +1269,25 @@ function App() {
 
               <SLabel>Specialty / Discipline</SLabel>
               <Dropdown value={specialty} onChange={setSpecialty} options={SPECIALTIES} placeholder="Select a specialty…" searchable/>
+              <Divider/>
+
+              <SLabel>Search guidance <span style={{fontWeight:400,color:'var(--ink3)'}}>— optional</span></SLabel>
+              <div style={{fontSize:11,color:'var(--ink3)',marginBottom:6,lineHeight:1.5}}>
+                Journals, societies, or leadership roles to prioritize (e.g. "NEJM editorial board, AHA committee chairs, fellowship directors")
+              </div>
+              <textarea
+                value={considerations}
+                onChange={e=>setConsiderations(e.target.value)}
+                placeholder="e.g. focus on NEJM and JAMA editorial boards, AHA committee roles, NIH study section chairs…"
+                rows={3}
+                style={{width:'100%',padding:'9px 10px',border:'1.5px solid var(--border)',borderRadius:8,
+                  fontSize:12,color:'var(--ink)',outline:'none',background:'#fff',
+                  resize:'vertical',lineHeight:1.5,transition:'border-color 0.15s',fontFamily:'inherit',
+                  boxSizing:'border-box',
+                }}
+                onFocus={e=>e.target.style.borderColor='var(--red)'}
+                onBlur={e=>e.target.style.borderColor='var(--border)'}
+              />
               <Divider/>
 
               <SLabel>Filters</SLabel>
@@ -1430,6 +1539,10 @@ function App() {
               <div style={{flexShrink:0,width:nlHasRun?260:480,transition:'width 0.55s cubic-bezier(0.16,1,0.3,1)'}}>
                 <div style={{position:'sticky',top:24,width:nlHasRun?260:480,transition:'width 0.55s cubic-bezier(0.16,1,0.3,1)'}}>
 
+                  <SLabel>Specialty / Discipline <span style={{fontWeight:400,color:'var(--ink3)'}}>— optional</span></SLabel>
+                  <Dropdown value={nlSpecialty} onChange={setNlSpecialty} options={SPECIALTIES} placeholder="Select to apply specialty guidance…" searchable/>
+                  <Divider/>
+
                   <SLabel>Input method</SLabel>
                   <Pills value={nlInputMode} onChange={v=>{setNlInputMode(v);setNlParsed([]);setNlParseError('');setNlRawText('');setNlFileName('');}}
                     options={[['csv','CSV Upload'],['manual','Manual Entry']]}/>
@@ -1499,6 +1612,25 @@ function App() {
                     </div>
                   )}
 
+                  <Divider/>
+
+                  <SLabel>Search guidance <span style={{fontWeight:400,color:'var(--ink3)'}}>— optional</span></SLabel>
+                  <div style={{fontSize:11,color:'var(--ink3)',marginBottom:6,lineHeight:1.5}}>
+                    Journals, societies, or leadership roles to prioritize (e.g. "NEJM editorial board, AHA committee chairs, fellowship directors")
+                  </div>
+                  <textarea
+                    value={nlConsiderations}
+                    onChange={e=>setNlConsiderations(e.target.value)}
+                    placeholder="e.g. focus on NEJM and JAMA editorial boards, AHA committee roles, NIH study section chairs…"
+                    rows={3}
+                    style={{width:'100%',padding:'9px 10px',border:'1.5px solid var(--border)',borderRadius:8,
+                      fontSize:12,color:'var(--ink)',outline:'none',background:'#fff',
+                      resize:'vertical',lineHeight:1.5,transition:'border-color 0.15s',fontFamily:'inherit',
+                      boxSizing:'border-box',
+                    }}
+                    onFocus={e=>e.target.style.borderColor='var(--red)'}
+                    onBlur={e=>e.target.style.borderColor='var(--border)'}
+                  />
                   <Divider/>
 
                   <SLabel>Filters</SLabel>

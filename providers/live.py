@@ -109,6 +109,67 @@ def _load_discipline_context(discipline: str) -> str:
     return f"--- Specialty guidance for {discipline} ---\n{content}\n---\n\n"
 
 
+_MERGE_PROMPT = """\
+You maintain a specialty guidance file used to direct an AI agent searching for professional \
+roles of academic faculty. The file lists target journals, societies, and leadership roles \
+relevant to the specialty.
+
+Current file content:
+{existing}
+
+New input from a physician in this specialty:
+{user_input}
+
+Task: Produce an updated version of the file that incorporates genuinely new information:
+- Add new journals at the TOP of the "Target Journals" section
+- Add new societies at the TOP of the "Target Societies" section
+- Add new leadership roles at the TOP of the "Leadership Roles" section
+- Do NOT duplicate anything already present (check carefully before adding)
+- Preserve the existing markdown structure and headings exactly
+- Do NOT remove or reorder existing content
+
+Return ONLY the updated file content. No explanation, no markdown fences.
+"""
+
+_MERGE_PROMPT_NEW = """\
+Create a specialty guidance file for {discipline} faculty role searching based on this \
+physician input: {user_input}
+
+Structure it with these sections (markdown format):
+# Role Search Config: {discipline}
+## Target Societies
+## Target Journals
+## Leadership Roles
+
+Return ONLY the file content. No explanation, no markdown fences.
+"""
+
+
+def merge_specialty_considerations(discipline: str, user_input: str, openai_client) -> None:
+    """Merge physician input into the specialty .md file before Agent 2 runs."""
+    if not user_input or not user_input.strip():
+        return
+    filename = discipline.lower().replace(" ", "_").replace("/", "_") + ".md"
+    path = _ROLES_DIR / filename
+
+    if path.exists():
+        existing = path.read_text().strip()
+        prompt = _MERGE_PROMPT.format(existing=existing, user_input=user_input.strip())
+    else:
+        prompt = _MERGE_PROMPT_NEW.format(discipline=discipline, user_input=user_input.strip())
+
+    print(f"  [Merge] Updating specialty guidance for {discipline}...")
+    resp = openai_client.chat.completions.create(
+        model="gpt-4o-mini",
+        messages=[{"role": "user", "content": prompt}],
+        temperature=0,
+    )
+    updated = resp.choices[0].message.content.strip()
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(updated + "\n")
+    print(f"  [Merge] Saved updated guidance → {path.name}")
+
+
 _ROLES_PROMPT = """\
 {discipline_context}Search the web for the professional roles and service activities of {name} at {school}.
 
@@ -689,9 +750,11 @@ class LiveNihProvider(NihProvider):
 
 
 class LiveRolesProvider(RolesProvider):
-    def __init__(self, openai_client, discipline: str = ""):
+    def __init__(self, openai_client, discipline: str = "", considerations: str = ""):
         self._client = openai_client
         self._discipline_context = _load_discipline_context(discipline) if discipline else ""
+        if considerations:
+            self._discipline_context += f"\nAdditional guidance for this run:\n{considerations}\n"
 
     def _fetch(self, name: str, school: str) -> dict:
         """Make one web search call and return the parsed JSON (title + roles)."""
