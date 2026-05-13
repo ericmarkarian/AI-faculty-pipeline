@@ -840,6 +840,20 @@ def _parse_name_for_scopus(full_name: str) -> tuple[str, str, str]:
     return first, middle, last
 
 
+_ALT_FIRST_RE = re.compile(r'[(""]([^)""]+)[)""]')
+
+
+def _extract_alternate_first(name: str) -> str | None:
+    """Extract a parenthetical or quoted preferred/alternate first name.
+
+    'Cecilio (Leo) Lopez'    → 'Leo'
+    'Azadeh "Azy" Issapouru' → 'Azy'
+    'Brian Han'              → None
+    """
+    m = _ALT_FIRST_RE.search(name)
+    return m.group(1).strip() if m else None
+
+
 def _scopus_affil_str(entry: dict) -> str:
     affil = entry.get("affiliation-current", {})
     if isinstance(affil, list):
@@ -958,6 +972,76 @@ class LiveHIndexProvider(HIndexProvider):
                 "retrieved_at": now,
             }
 
+    def _scopus_find_candidate(
+        self, first: str, last: str, aliases: list[str], middle: str = ""
+    ) -> tuple[dict | None, str, str]:
+        """Run Scopus steps 1–3 for (first, last).
+
+        Returns (best_entry, confidence, reason):
+          "high"         — affiliation confirmed in search results or via profile fetch
+          "needs_review" — single name match, affiliation not yet verified (caller does step 4)
+          "failed"       — no usable match; reason explains why
+        """
+        # Step 1: Search — try with middle initial, fall back to first only
+        entries: list[dict] = []
+        queries = (
+            [f"AUTHLASTNAME({last}) AND AUTHFIRST({first} {middle})"] if middle else []
+        ) + [f"AUTHLASTNAME({last}) AND AUTHFIRST({first})"]
+        for q in queries:
+            print(f"      [Scopus] Querying: {q}")
+            entries = _scopus_search(q, self._api_key)
+            if entries:
+                break
+
+        if not entries:
+            return None, "failed", f"No Scopus results for '{first} {last}'"
+
+        # Step 2: Filter to name matches
+        name_matches = [e for e in entries if _name_matches(first, last, e)]
+        if not name_matches:
+            return None, "failed", f"No name match in Scopus for '{first} {last}'"
+
+        # Step 3: Pick best candidate
+        affil_match = next(
+            (e for e in name_matches if _affil_matches(_scopus_affil_str(e), aliases)),
+            None,
+        )
+        if affil_match:
+            print(f"      [Scopus] Affiliation match in search results")
+            return affil_match, "high", ""
+
+        if len(name_matches) == 1:
+            pref = name_matches[0].get("preferred-name", {})
+            display = f"{pref.get('given-name', '')} {pref.get('surname', '')}".strip()
+            print(f"      [Scopus] Single name match '{display}' — will verify via profile")
+            return name_matches[0], "needs_review", ""
+
+        # Multiple matches — fetch profiles to confirm affiliation
+        for candidate in name_matches:
+            cid = candidate.get("dc:identifier", "").replace("AUTHOR_ID:", "")
+            if not cid:
+                continue
+            try:
+                prof = _scopus_fetch_profile(cid, self._api_key)
+                affil_data = prof.get("author-profile", {}).get("affiliation-current", {})
+                affil_name = ""
+                if isinstance(affil_data, dict):
+                    affil_name = (
+                        (affil_data.get("affiliation", {}) or {})
+                        .get("ip-doc", {})
+                        .get("sort-name", "")
+                    )
+                if _affil_matches(affil_name, aliases):
+                    print(f"      [Scopus] Found affiliation match via profile fetch")
+                    return candidate, "high", ""
+            except Exception:
+                continue
+
+        pref = name_matches[0].get("preferred-name", {})
+        display = f"{pref.get('given-name', '')} {pref.get('surname', '')}".strip()
+        print(f"      [Scopus] Multiple matches for '{last}', no affiliation confirmed. Top: '{display}'")
+        return None, "failed", f"Multiple name matches for '{last}', no affiliation confirmed"
+
     def _get_hindex_inner(self, name: str, school: str, now: str) -> HIndexEvidence:
         first, middle, last = _parse_name_for_scopus(name)
         if not first or not last:
@@ -967,78 +1051,36 @@ class LiveHIndexProvider(HIndexProvider):
                 "retrieved_at": now,
             }
 
-        # Step 1: Search — try with middle initial first, fall back to first only
-        entries = []
-        for q in ([f"AUTHLASTNAME({last}) AND AUTHFIRST({first} {middle})"] if middle else []) + \
-                  [f"AUTHLASTNAME({last}) AND AUTHFIRST({first})"]:
-            print(f"      [Scopus] Querying: {q}")
-            entries = _scopus_search(q, self._api_key)
-            if entries:
-                break
-
-        if not entries:
-            return {
-                "h_index": None, "scopus_author_id": None,
-                "source_url": "", "evidence_text": f"No Scopus results for {name}",
-                "retrieved_at": now,
-            }
-
-        # Step 2: Filter to name matches only
-        name_matches = [e for e in entries if _name_matches(first, last, e)]
-        if not name_matches:
-            return {
-                "h_index": None, "scopus_author_id": None,
-                "source_url": "", "evidence_text": f"No name match found in Scopus for {name}",
-                "retrieved_at": now,
-            }
-
         xlsx_aliases = _xlsx_aliases_for(school)
         aliases = list(xlsx_aliases) if xlsx_aliases else [school.lower()]
 
-        # Step 3: Pick best candidate
-        # First preference: search result already shows a matching affiliation
-        affil_match = next((e for e in name_matches if _affil_matches(_scopus_affil_str(e), aliases)), None)
-        if affil_match:
-            best_entry = affil_match
-            confidence = "high"
-            print(f"      [Scopus] Affiliation match in search results")
-        elif len(name_matches) == 1:
-            # One name match — fetch their full profile to check current affiliation
-            # (search index is often stale; profile reflects current institution)
-            best_entry = name_matches[0]
-            confidence = "needs_review"
-            pref = best_entry.get("preferred-name", {})
-            display = f"{pref.get('given-name','')} {pref.get('surname','')}".strip()
-            print(f"      [Scopus] Single name match '{display}' — will verify via profile")
-        else:
-            # Multiple name matches, none with matching affiliation in search results
-            # Try fetching profiles for each to find the one at this institution
-            best_entry = None
-            confidence = "needs_review"
-            for candidate in name_matches:
-                cid = candidate.get("dc:identifier", "").replace("AUTHOR_ID:", "")
-                if not cid:
-                    continue
-                try:
-                    prof = _scopus_fetch_profile(cid, self._api_key)
-                    affil_data = prof.get("author-profile", {}).get("affiliation-current", {})
-                    affil_name = ""
-                    if isinstance(affil_data, dict):
-                        affil_name = (affil_data.get("affiliation", {}) or {}).get("ip-doc", {}).get("sort-name", "")
-                    if _affil_matches(affil_name, aliases):
-                        best_entry = candidate
-                        confidence = "high"
-                        print(f"      [Scopus] Found affiliation match via profile fetch")
-                        break
-                except Exception:
-                    continue
-            if best_entry is None:
-                pref = name_matches[0].get("preferred-name", {})
-                display = f"{pref.get('given-name','')} {pref.get('surname','')}".strip()
-                print(f"      [Scopus] Multiple matches for '{last}', no affiliation confirmed — skipping. Top: '{display}'")
+        # Steps 1–3: find Scopus candidate with parsed first name
+        best_entry, confidence, reason = self._scopus_find_candidate(first, last, aliases, middle)
+
+        # Affiliation gate: if no confirmed match, check for alternate first name
+        if confidence == "failed":
+            alternate = _extract_alternate_first(name)
+            if alternate:
+                print(
+                    f"      [Scopus] Initial match for '{name}' failed affiliation gate; "
+                    f"retrying with alternate first name '{alternate}'."
+                )
+                best_entry, confidence, alt_reason = self._scopus_find_candidate(alternate, last, aliases)
+                if confidence == "failed":
+                    return {
+                        "h_index": None, "scopus_author_id": None,
+                        "source_url": "",
+                        "evidence_text": (
+                            f"Alternate first name '{alternate}' also failed affiliation gate "
+                            f"for {name}: {alt_reason}"
+                        ),
+                        "qc_hindex_confidence": "yellow",
+                        "retrieved_at": now,
+                    }
+            else:
                 return {
                     "h_index": None, "scopus_author_id": None,
-                    "source_url": "", "evidence_text": "Multiple name matches, no affiliation confirmed — skipped",
+                    "source_url": "", "evidence_text": reason,
                     "retrieved_at": now,
                 }
 
@@ -1052,16 +1094,17 @@ class LiveHIndexProvider(HIndexProvider):
 
         # Step 4: Fetch full profile for h-index (also has current affiliation)
         print(f"      [Scopus] Fetching profile for author_id={author_id}")
-        profile_data  = _scopus_fetch_profile(author_id, self._api_key)
-        h_index_val   = profile_data.get("h-index")
-        doc_count     = profile_data.get("coredata", {}).get("document-count", "?")
-        h_index       = int(h_index_val) if h_index_val is not None else None
+        profile_data = _scopus_fetch_profile(author_id, self._api_key)
+        h_index_val  = profile_data.get("h-index")
+        doc_count    = profile_data.get("coredata", {}).get("document-count", "?")
+        h_index      = int(h_index_val) if h_index_val is not None else None
 
-        # If search showed stale affiliation, use profile's current affiliation for display
         profile_affil = ""
         try:
-            affil_data   = profile_data.get("author-profile", {}).get("affiliation-current", {})
-            profile_affil = (affil_data.get("affiliation", {}) or {}).get("ip-doc", {}).get("sort-name", "")
+            affil_data    = profile_data.get("author-profile", {}).get("affiliation-current", {})
+            profile_affil = (
+                (affil_data.get("affiliation", {}) or {}).get("ip-doc", {}).get("sort-name", "")
+            )
         except Exception:
             pass
         display_affil = profile_affil or _scopus_affil_str(best_entry)
@@ -1071,13 +1114,16 @@ class LiveHIndexProvider(HIndexProvider):
             confidence = "high"
 
         pref    = best_entry.get("preferred-name", {})
-        display = f"{pref.get('given-name','')} {pref.get('surname','')}".strip()
+        display = f"{pref.get('given-name', '')} {pref.get('surname', '')}".strip()
         print(f"      [Scopus] Matched '{display}' @ '{display_affil}' (confidence={confidence}, h-index={h_index})")
 
         return {
             "h_index": h_index,
             "scopus_author_id": author_id,
             "source_url": f"https://www.scopus.com/authid/detail.uri?authorId={author_id}",
-            "evidence_text": f"Scopus: h-index={h_index}, documents={doc_count}, affil='{display_affil}', confidence={confidence}",
+            "evidence_text": (
+                f"Scopus: h-index={h_index}, documents={doc_count}, "
+                f"affil='{display_affil}', confidence={confidence}"
+            ),
             "retrieved_at": now,
         }

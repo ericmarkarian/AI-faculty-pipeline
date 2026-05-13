@@ -38,6 +38,7 @@ class HIndexEvidence(TypedDict, total=False):
     source_url: str
     evidence_text: str
     retrieved_at: str
+    qc_hindex_confidence: str  # "yellow" when alternate-name fallback was tried and failed
 
 
 ALLOWED_CATEGORIES = frozenset({"editorial", "society", "leadership", "training"})
