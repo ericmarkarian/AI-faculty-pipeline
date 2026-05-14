@@ -63,7 +63,7 @@
 <body>
 <div id="root"></div>
 <script type="text/babel">
-const { useState, useMemo, useRef, useEffect } = React;
+const { useState, useMemo, useRef, useEffect, useCallback } = React;
 
 /* ── QC ── */
 const QS = {
@@ -807,15 +807,49 @@ const DO_SCHOOLS=[
   {name:"William Carey University College of Osteopathic Medicine",state:"MS",type:"DO"},
 ];
 const PIPELINE_SCHOOLS=[
-  {name:"Texas Children's Hospital",state:"TX",type:"Pipeline"},
-  {name:"Cincinnati Children's Hospital",state:"OH",type:"Pipeline"},
-  {name:"Seattle Children's Hospital",state:"WA",type:"Pipeline"},
-  {name:"Children's National Hospital",state:"DC",type:"Pipeline"},
-  {name:"Lurie Children's Hospital",state:"IL",type:"Pipeline"},
-  {name:"Nationwide Children's Hospital",state:"OH",type:"Pipeline"},
-  {name:"Children's Hospital Los Angeles",state:"CA",type:"Pipeline"},
+  {name:"Boston Children's Hospital",state:"MA",type:"Pipeline"},
+  {name:"Children's Healthcare of Atlanta",state:"GA",type:"Pipeline"},
   {name:"Children's Hospital Colorado",state:"CO",type:"Pipeline"},
+  {name:"Children's Hospital Los Angeles",state:"CA",type:"Pipeline"},
+  {name:"Children's Hospital of Philadelphia",state:"PA",type:"Pipeline"},
+  {name:"Children's Medical Center Dallas",state:"TX",type:"Pipeline"},
+  {name:"Children's Mercy Kansas City",state:"MO",type:"Pipeline"},
+  {name:"Children's National Hospital",state:"DC",type:"Pipeline"},
+  {name:"Cincinnati Children's Hospital",state:"OH",type:"Pipeline"},
+  {name:"C.S. Mott Children's Hospital",state:"MI",type:"Pipeline"},
+  {name:"Dell Children's Medical Center",state:"TX",type:"Pipeline"},
+  {name:"Duke Children's Hospital and Health Center",state:"NC",type:"Pipeline"},
+  {name:"Intermountain Primary Children's Hospital",state:"UT",type:"Pipeline"},
+  {name:"Johns Hopkins Children's Center",state:"MD",type:"Pipeline"},
+  {name:"Levine Children's Hospital",state:"NC",type:"Pipeline"},
+  {name:"Lucile Packard Children's Hospital Stanford",state:"CA",type:"Pipeline"},
+  {name:"Lurie Children's Hospital",state:"IL",type:"Pipeline"},
+  {name:"Monroe Carell Jr. Children's Hospital at Vanderbilt",state:"TN",type:"Pipeline"},
+  {name:"MUSC Children's Heart Program",state:"SC",type:"Pipeline"},
+  {name:"Nationwide Children's Hospital",state:"OH",type:"Pipeline"},
+  {name:"Nemours Children's Hospital",state:"DE",type:"Pipeline"},
+  {name:"New York-Presbyterian Children's Hospital",state:"NY",type:"Pipeline"},
+  {name:"Rady Children's Hospital",state:"CA",type:"Pipeline"},
+  {name:"Seattle Children's Hospital",state:"WA",type:"Pipeline"},
+  {name:"Texas Children's Hospital",state:"TX",type:"Pipeline"},
+  {name:"UCLA Mattel Children's Hospital",state:"CA",type:"Pipeline"},
+  {name:"UCSF Benioff Children's Hospitals",state:"CA",type:"Pipeline"},
+  {name:"UPMC Children's Hospital of Pittsburgh",state:"PA",type:"Pipeline"},
+  {name:"Cleveland Clinic Children's",state:"OH",type:"Pipeline"},
   {name:"NIH / NICHD",state:"MD",type:"Pipeline"},
+  {name:"UF Health Shands Children's Hospital",state:"FL",type:"Pipeline"},
+  {name:"Loma Linda University Children's Hospital",state:"CA",type:"Pipeline"},
+  {name:"Children's Memorial Hermann Hospital",state:"TX",type:"Pipeline"},
+  {name:"Children's Hospital of Alabama",state:"AL",type:"Pipeline"},
+  {name:"Rainbow Babies and Children's Hospital",state:"OH",type:"Pipeline"},
+  {name:"Riley Hospital for Children",state:"IN",type:"Pipeline"},
+  {name:"Arkansas Children's Hospital",state:"AR",type:"Pipeline"},
+  {name:"Mayo Clinic-Children's Minnesota Cardiovascular Collaborative",state:"MN",type:"Pipeline"},
+  {name:"Virginia Congenital Cardiac Collaborative",state:"VA",type:"Pipeline"},
+  {name:"Ochsner Children's Hospital",state:"LA",type:"Pipeline"},
+  {name:"Hassenfeld Children's Hospital at NYU Langone",state:"NY",type:"Pipeline"},
+  {name:"Oklahoma Children's Hospital OU Health",state:"OK",type:"Pipeline"},
+  {name:"Johns Hopkins All Children's Hospital",state:"FL",type:"Pipeline"},
 ];
 const ALL_SCHOOLS=[...MD_SCHOOLS,...DO_SCHOOLS,...PIPELINE_SCHOOLS].sort((a,b)=>a.name.localeCompare(b.name));
 const SPECIALTIES=["Allergy & Immunology","Anesthesiology","Cardiology","Cardiothoracic Surgery","Critical Care Medicine","Dermatology","Emergency Medicine","Endocrinology","Family Medicine","Gastroenterology","General Surgery","Geriatric Medicine","Hematology","Hospital Medicine","Infectious Disease","Internal Medicine","Medical Genetics","Nephrology","Neurology","Neurosurgery","Obstetrics & Gynecology","Oncology","Ophthalmology","Orthopedic Surgery","Otolaryngology (ENT)","Pain Medicine","Pathology","Pediatric Cardiology","Pediatric Endocrinology","Pediatric Gastroenterology","Pediatric Hematology/Oncology","Pediatric Nephrology","Pediatric Neurology","Pediatric Pulmonology","Pediatric Surgery","Pediatrics","Physical Medicine & Rehabilitation","Plastic Surgery","Psychiatry","Pulmonology","Radiation Oncology","Radiology","Reproductive Endocrinology","Rheumatology","Sleep Medicine","Sports Medicine","Thoracic Surgery","Urology","Vascular Surgery"];
@@ -926,6 +960,144 @@ function SchoolSelector({ selected, setSelected, typeFilter }) {
   );
 }
 
+/* ── Shared table utilities ── */
+const CELL_STYLE = {padding:'11px 14px',borderBottom:'1px solid var(--border-sub)',verticalAlign:'top'};
+
+function rolesSummary(f) {
+  const parts=[];
+  if((f.leadership_roles||[]).length) parts.push(`${f.leadership_roles.length} leadership`);
+  if((f.editorial_roles||[]).length)  parts.push(`${f.editorial_roles.length} editorial`);
+  if((f.society_roles||[]).length)    parts.push(`${f.society_roles.length} society`);
+  if((f.training_roles||[]).length)   parts.push(`${f.training_roles.length} training`);
+  return parts;
+}
+
+function applyFilters(items, {search,minH,minGrants,rankFilter,sortCol,sortDir,loading}) {
+  const RO={instructor:1,assistant:2,associate:3,professor:4};
+  const rankOf=t=>{ const s=(t||'').toLowerCase(); if(s.includes('associate')) return 3; if(s.includes('assistant')) return 2; if(s.includes('instructor')) return 1; if(s.includes('professor')) return 4; return 0; };
+  let r=items;
+  if(search){ const q=search.toLowerCase(); r=r.filter(f=>(f.full_name||'').toLowerCase().includes(q)||(f.school||'').toLowerCase().includes(q)); }
+  if(minH)        r=r.filter(f=>(f.h_index??-1)>=+minH);
+  if(minGrants)   r=r.filter(f=>(f.nih_grant_count??0)>=+minGrants);
+  if(rankFilter!=='ALL') r=r.filter(f=>rankOf(f.title)>=(RO[rankFilter]||0));
+  if(!loading) r=[...r].sort((a,b)=>{
+    let av=a[sortCol]??'',bv=b[sortCol]??'';
+    if(typeof av==='string'){av=av.toLowerCase();bv=bv.toLowerCase();}
+    return sortDir==='asc'?(av<bv?-1:av>bv?1:0):(av>bv?-1:av<bv?1:0);
+  });
+  return r;
+}
+
+/* ── Memoized table row — School Search tab ── */
+const FacultyRow = React.memo(function FacultyRow({faculty:f,isNew,onRowClick,onQcClick}) {
+  const meta=SCHOOL_META[f.school]||{};
+  const h=f.h_index;
+  const parts=rolesSummary(f);
+  return (
+    <tr className="tr-hover" onClick={()=>onRowClick(f)}
+      style={{...(isNew?{animation:'fadeUp 0.3s cubic-bezier(0.16,1,0.3,1) both'}:{}),cursor:'pointer'}}>
+      <td style={CELL_STYLE}>
+        <span className="name-cell" style={{fontFamily:"'Spectral',serif",fontStyle:'italic',fontSize:14,color:'var(--ink)',lineHeight:1.3,transition:'color 0.15s'}}>{f.full_name}</span>
+        {f.profile_url&&(
+          <a href={f.profile_url} target="_blank" rel="noreferrer" onClick={e=>e.stopPropagation()}
+            style={{display:'block',fontSize:10,color:'var(--red)',textDecoration:'none',fontWeight:600,marginTop:2,letterSpacing:'0.02em'}}
+            onMouseEnter={e=>e.currentTarget.style.textDecoration='underline'}
+            onMouseLeave={e=>e.currentTarget.style.textDecoration='none'}>Profile ↗</a>
+        )}
+      </td>
+      <td style={{...CELL_STYLE,overflow:'hidden'}}>
+        <div style={{fontSize:12,color:'var(--ink2)',lineHeight:1.4,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{f.school}</div>
+        {meta.state&&(
+          <div style={{display:'flex',alignItems:'center',gap:5,marginTop:2}}>
+            <span style={{fontSize:10,color:'var(--ink3)'}}>{STATE_NAMES[meta.state]||meta.state}</span>
+            {meta.type&&<span style={{fontSize:9,fontWeight:700,padding:'1px 5px',borderRadius:3,background:(TYPE_COLOR[meta.type]||{}).bg,color:(TYPE_COLOR[meta.type]||{}).tx}}>{meta.type}</span>}
+          </div>
+        )}
+      </td>
+      <td style={{...CELL_STYLE,overflow:'hidden'}}>
+        <div style={{fontSize:11,color:'var(--ink2)',lineHeight:1.4,overflow:'hidden',display:'-webkit-box',WebkitLineClamp:3,WebkitBoxOrient:'vertical'}}>
+          {f.title||<span style={{color:'var(--ink3)'}}>—</span>}
+        </div>
+      </td>
+      <td style={{...CELL_STYLE,textAlign:'center'}}>
+        {h!=null?<span style={{fontFamily:"'Spectral',serif",fontSize:18,fontWeight:600,color:h>=30?'var(--qg-tx)':h>=15?'var(--qy-tx)':'var(--ink2)'}}>{h}</span>
+                :<span style={{color:'var(--ink3)',fontSize:13}}>—</span>}
+      </td>
+      <td style={CELL_STYLE}>
+        {(f.nih_grant_count||0)>0?(()=>{
+          const titles=(f.nih_grant_titles||'').split('|').map(s=>s.trim()).filter(Boolean);
+          const first=titles[0]||'';
+          return (<div>
+            <span style={{fontFamily:"'Spectral',serif",fontSize:16,fontWeight:600,color:'var(--red)'}}>{f.nih_grant_count}</span>
+            {first&&<div style={{fontSize:10,color:'var(--ink2)',marginTop:2,lineHeight:1.4,overflow:'hidden',display:'-webkit-box',WebkitLineClamp:2,WebkitBoxOrient:'vertical'}}>{first}</div>}
+          </div>);
+        })():<span style={{color:'var(--ink3)',fontSize:13}}>—</span>}
+      </td>
+      <td style={CELL_STYLE}>
+        {parts.length>0
+          ?<div style={{display:'flex',flexDirection:'column',gap:3}}>
+              {parts.map((p,j)=><span key={j} style={{display:'inline-block',fontSize:10,fontWeight:600,color:'var(--red-text)',background:'var(--red-bg)',padding:'2px 7px',borderRadius:10,border:'1px solid var(--red-bg2)',width:'fit-content'}}>{p}</span>)}
+            </div>
+          :<span style={{color:'var(--ink3)',fontSize:12}}>—</span>}
+      </td>
+      <td style={{...CELL_STYLE,textAlign:'center'}}>
+        <QcBadge overall={(f.qc||{}).overall} onClick={e=>{e.stopPropagation();onQcClick(f);}}/>
+      </td>
+    </tr>
+  );
+});
+
+/* ── Memoized table row — Name Lookup tab ── */
+const NlFacultyRow = React.memo(function NlFacultyRow({faculty:f,isNew,onRowClick,onQcClick}) {
+  const h=f.h_index;
+  const parts=rolesSummary(f);
+  return (
+    <tr className="tr-hover" onClick={()=>onRowClick(f)}
+      style={{...(isNew?{animation:'fadeUp 0.3s cubic-bezier(0.16,1,0.3,1) both'}:{}),cursor:'pointer'}}>
+      <td style={CELL_STYLE}>
+        <span className="name-cell" style={{fontFamily:"'Spectral',serif",fontStyle:'italic',fontSize:14,color:'var(--ink)',lineHeight:1.3,transition:'color 0.15s'}}>{f.full_name}</span>
+        {f.profile_url&&(
+          <a href={f.profile_url} target="_blank" rel="noreferrer" onClick={e=>e.stopPropagation()}
+            style={{display:'block',fontSize:10,color:'var(--ink3)',marginTop:2,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap',textDecoration:'none'}}
+            onMouseEnter={e=>e.target.style.color='var(--red)'} onMouseLeave={e=>e.target.style.color='var(--ink3)'}>↗ profile</a>
+        )}
+      </td>
+      <td style={CELL_STYLE}>
+        <div style={{fontSize:12,color:'var(--ink)',fontWeight:500,lineHeight:1.4}}>{f.school||<span style={{color:'var(--ink3)'}}>—</span>}</div>
+      </td>
+      <td style={{...CELL_STYLE,overflow:'hidden'}}>
+        <div style={{fontSize:11,color:'var(--ink2)',lineHeight:1.4,overflow:'hidden',display:'-webkit-box',WebkitLineClamp:3,WebkitBoxOrient:'vertical'}}>
+          {f.title||<span style={{color:'var(--ink3)'}}>—</span>}
+        </div>
+      </td>
+      <td style={{...CELL_STYLE,textAlign:'center'}}>
+        {h!=null?<span style={{fontFamily:"'Spectral',serif",fontSize:18,fontWeight:600,color:h>=30?'var(--qg-tx)':h>=15?'var(--qy-tx)':'var(--ink2)'}}>{h}</span>
+                :<span style={{color:'var(--ink3)',fontSize:13}}>—</span>}
+      </td>
+      <td style={CELL_STYLE}>
+        {(f.nih_grant_count||0)>0?(()=>{
+          const titles=(f.nih_grant_titles||'').split('|').map(s=>s.trim()).filter(Boolean);
+          const first=titles[0]||'';
+          return (<div>
+            <span style={{fontFamily:"'Spectral',serif",fontSize:16,fontWeight:600,color:'var(--red)'}}>{f.nih_grant_count}</span>
+            {first&&<div style={{fontSize:10,color:'var(--ink2)',marginTop:2,lineHeight:1.4,overflow:'hidden',display:'-webkit-box',WebkitLineClamp:2,WebkitBoxOrient:'vertical'}}>{first}</div>}
+          </div>);
+        })():<span style={{color:'var(--ink3)',fontSize:13}}>—</span>}
+      </td>
+      <td style={CELL_STYLE}>
+        {parts.length>0
+          ?<div style={{display:'flex',flexDirection:'column',gap:3}}>
+              {parts.map((p,j)=><span key={j} style={{display:'inline-block',fontSize:10,fontWeight:600,color:'var(--red-text)',background:'var(--red-bg)',padding:'2px 7px',borderRadius:10,border:'1px solid var(--red-bg2)',width:'fit-content'}}>{p}</span>)}
+            </div>
+          :<span style={{color:'var(--ink3)',fontSize:12}}>—</span>}
+      </td>
+      <td style={{...CELL_STYLE,textAlign:'center'}}>
+        <QcBadge overall={(f.qc||{}).overall} onClick={e=>{e.stopPropagation();onQcClick(f);}}/>
+      </td>
+    </tr>
+  );
+});
+
 /* ── App ── */
 function App() {
   /* ── Tab state ── */
@@ -939,7 +1111,10 @@ function App() {
   const [minH,setMinH]               = useState('');
   const [minGrants,setMinGrants]     = useState('');
   const [rankFilter,setRankFilter]   = useState('ALL');
-  const [results,setResults]         = useState([]);
+  const resultsMapRef    = useRef(new Map());  // Map<full_name, record>
+  const pendingRef       = useRef([]);          // SSE batch buffer
+  const animatedNamesRef = useRef(new Set());   // names that have already animated
+  const [tick,setTick]               = useState(0);
   const [loading,setLoading]         = useState(false);
   const [ran,setRan]                 = useState(false);
   const [sortCol,setSortCol]         = useState('full_name');
@@ -958,7 +1133,10 @@ function App() {
   const [nlParseError,setNlParseError] = useState('');
   const [nlRawText,setNlRawText]       = useState('');
   const [nlFileName,setNlFileName]     = useState('');
-  const [nlResults,setNlResults]       = useState([]);
+  const nlResultsMapRef    = useRef(new Map());
+  const nlPendingRef       = useRef([]);
+  const nlAnimatedNamesRef = useRef(new Set());
+  const [nlTick,setNlTick]             = useState(0);
   const [nlLoading,setNlLoading]       = useState(false);
   const [nlRan,setNlRan]               = useState(false);
   const [nlSortCol,setNlSortCol]       = useState('full_name');
@@ -977,12 +1155,41 @@ function App() {
   const [considerations,setConsiderations]     = useState('');
   const [nlConsiderations,setNlConsiderations] = useState('');
 
-  const hasRun = loading || results.length > 0 || ran;
+  /* ── Phase 1: batch-flush SSE buffers every 250 ms ── */
+  useEffect(()=>{
+    const id=setInterval(()=>{
+      if(pendingRef.current.length){
+        pendingRef.current.forEach(r=>resultsMapRef.current.set(r.full_name,r));
+        pendingRef.current=[];
+        setTick(t=>t+1);
+      }
+    },250);
+    return ()=>clearInterval(id);
+  },[]);
+  useEffect(()=>{
+    const id=setInterval(()=>{
+      if(nlPendingRef.current.length){
+        nlPendingRef.current.forEach(r=>nlResultsMapRef.current.set(r.full_name,r));
+        nlPendingRef.current=[];
+        setNlTick(t=>t+1);
+      }
+    },250);
+    return ()=>clearInterval(id);
+  },[]);
+
+  /* ── Stable row handlers (Phase 3) ── */
+  const handleRowClick   = useCallback(f=>setDetail(f),[]);
+  const handleQcClick    = useCallback(f=>setQcModal(f),[]);
+  const handleNlRowClick = useCallback(f=>setNlDetail(f),[]);
+  const handleNlQcClick  = useCallback(f=>setNlQcModal(f),[]);
+
+  const hasRun = loading || resultsMapRef.current.size > 0 || ran;
   const canRun = selected.length > 0 && specialty && !loading;
 
   const runSearch = async () => {
     if (!canRun) return;
-    setLoading(true); setRan(false); setResults([]); setErrorMsg('');
+    resultsMapRef.current.clear(); pendingRef.current=[]; animatedNamesRef.current.clear(); setTick(0);
+    setLoading(true); setRan(false); setErrorMsg('');
     setProgress({done:0,total:0,phase:`Scraping ${selected.length} institution${selected.length>1?'s':''}…`});
     if(esRef.current){ esRef.current.close(); esRef.current=null; }
     try {
@@ -993,9 +1200,12 @@ function App() {
     es.onmessage=e=>{
       const msg=JSON.parse(e.data);
       if(msg.type==='ping') return;
-      if(msg.type==='faculty'){ setResults(prev=>[...prev,msg.data]); setProgress({done:msg.completed,total:msg.total,phase:'Enriching faculty…'}); }
-      if(msg.type==='qc_update'){ setResults(prev=>prev.map(f=>f.full_name===msg.data.full_name?{...f,qc:msg.data.qc}:f)); }
-      if(msg.type==='done'){ es.close(); esRef.current=null; setLoading(false); setRan(true); setProgress(p=>({...p,phase:'Complete'})); }
+      if(msg.type==='faculty'){ pendingRef.current.push(msg.data); setProgress({done:msg.completed,total:msg.total,phase:'Enriching faculty…'}); }
+      if(msg.type==='qc_update'){
+        const prev=resultsMapRef.current.get(msg.data.full_name);
+        if(prev){ resultsMapRef.current.set(msg.data.full_name,{...prev,qc:msg.data.qc}); setTick(t=>t+1); }
+      }
+      if(msg.type==='done'){ es.close(); esRef.current=null; setLoading(false); setRan(true); setProgress(p=>({...p,phase:'Complete'})); setTick(t=>t+1); }
       if(msg.type==='error'){ setErrorMsg(msg.message||'Pipeline error'); es.close(); esRef.current=null; setLoading(false); }
     };
     es.onerror=()=>{ setErrorMsg('Stream connection lost.'); es.close(); esRef.current=null; setLoading(false); };
@@ -1076,7 +1286,8 @@ function App() {
   /* ── Name Lookup run ── */
   const runNameLookup = async () => {
     if(nlParsed.length===0||nlLoading) return;
-    setNlLoading(true); setNlRan(false); setNlResults([]); setNlErrorMsg('');
+    nlResultsMapRef.current.clear(); nlPendingRef.current=[]; nlAnimatedNamesRef.current.clear(); setNlTick(0);
+    setNlLoading(true); setNlRan(false); setNlErrorMsg('');
     setNlProgress({done:0,total:0,phase:`Looking up ${nlParsed.length} ${nlParsed.length===1?'person':'people'}…`});
     if(nlEsRef.current){ nlEsRef.current.close(); nlEsRef.current=null; }
     try {
@@ -1087,50 +1298,29 @@ function App() {
     es.onmessage=e=>{
       const msg=JSON.parse(e.data);
       if(msg.type==='ping') return;
-      if(msg.type==='faculty'){ setNlResults(prev=>[...prev,msg.data]); setNlProgress({done:msg.completed,total:msg.total,phase:'Enriching…'}); }
-      if(msg.type==='qc_update'){ setNlResults(prev=>prev.map(f=>f.full_name===msg.data.full_name?{...f,qc:msg.data.qc}:f)); }
-      if(msg.type==='done'){ es.close(); nlEsRef.current=null; setNlLoading(false); setNlRan(true); setNlProgress(p=>({...p,phase:'Complete'})); }
+      if(msg.type==='faculty'){ nlPendingRef.current.push(msg.data); setNlProgress({done:msg.completed,total:msg.total,phase:'Enriching…'}); }
+      if(msg.type==='qc_update'){
+        const prev=nlResultsMapRef.current.get(msg.data.full_name);
+        if(prev){ nlResultsMapRef.current.set(msg.data.full_name,{...prev,qc:msg.data.qc}); setNlTick(t=>t+1); }
+      }
+      if(msg.type==='done'){ es.close(); nlEsRef.current=null; setNlLoading(false); setNlRan(true); setNlProgress(p=>({...p,phase:'Complete'})); setNlTick(t=>t+1); }
       if(msg.type==='error'){ setNlErrorMsg(msg.message||'Pipeline error'); es.close(); nlEsRef.current=null; setNlLoading(false); }
     };
     es.onerror=()=>{ setNlErrorMsg('Stream connection lost.'); es.close(); nlEsRef.current=null; setNlLoading(false); };
   };
 
-  const displayed = useMemo(()=>{
-    let r=results;
-    if(tableSearch){ const q=tableSearch.toLowerCase(); r=r.filter(f=>(f.full_name||'').toLowerCase().includes(q)||(f.school||'').toLowerCase().includes(q)); }
-    if(minH) r=r.filter(f=>(f.h_index??-1)>=+minH);
-    if(minGrants) r=r.filter(f=>(f.nih_grant_count??0)>=+minGrants);
-    if(rankFilter!=='ALL'){
-      const RO={instructor:1,assistant:2,associate:3,professor:4};
-      const tR=t=>{ const s=(t||'').toLowerCase(); if(s.includes('associate')) return 3; if(s.includes('assistant')) return 2; if(s.includes('instructor')) return 1; if(s.includes('professor')) return 4; return 0; };
-      r=r.filter(f=>tR(f.title)>=(RO[rankFilter]||0));
-    }
-    return [...r].sort((a,b)=>{
-      let av=a[sortCol]??'',bv=b[sortCol]??'';
-      if(typeof av==='string'){av=av.toLowerCase();bv=bv.toLowerCase();}
-      return sortDir==='asc'?(av<bv?-1:av>bv?1:0):(av>bv?-1:av<bv?1:0);
-    });
-  },[results,tableSearch,minH,minGrants,rankFilter,sortCol,sortDir]);
+  const displayed = useMemo(()=>
+    applyFilters(Array.from(resultsMapRef.current.values()),
+      {search:tableSearch,minH,minGrants,rankFilter,sortCol,sortDir,loading}),
+    [tick,loading,tableSearch,minH,minGrants,rankFilter,sortCol,sortDir]);
 
   const sort=col=>{ if(sortCol===col) setSortDir(d=>d==='asc'?'desc':'asc'); else{setSortCol(col);setSortDir('asc');} };
   const nlSort=col=>{ if(nlSortCol===col) setNlSortDir(d=>d==='asc'?'desc':'asc'); else{setNlSortCol(col);setNlSortDir('asc');} };
 
-  const nlDisplayed = useMemo(()=>{
-    let r=nlResults;
-    if(nlTableSearch){ const q=nlTableSearch.toLowerCase(); r=r.filter(f=>(f.full_name||'').toLowerCase().includes(q)||(f.school||'').toLowerCase().includes(q)); }
-    if(nlMinH) r=r.filter(f=>(f.h_index??-1)>=+nlMinH);
-    if(nlMinGrants) r=r.filter(f=>(f.nih_grant_count??0)>=+nlMinGrants);
-    if(nlRankFilter!=='ALL'){
-      const RO={instructor:1,assistant:2,associate:3,professor:4};
-      const tR=t=>{ const s=(t||'').toLowerCase(); if(s.includes('associate')) return 3; if(s.includes('assistant')) return 2; if(s.includes('instructor')) return 1; if(s.includes('professor')) return 4; return 0; };
-      r=r.filter(f=>tR(f.title)>=(RO[nlRankFilter]||0));
-    }
-    return [...r].sort((a,b)=>{
-      let av=a[nlSortCol]??'',bv=b[nlSortCol]??'';
-      if(typeof av==='string'){av=av.toLowerCase();bv=bv.toLowerCase();}
-      return nlSortDir==='asc'?(av<bv?-1:av>bv?1:0):(av>bv?-1:av<bv?1:0);
-    });
-  },[nlResults,nlTableSearch,nlMinH,nlMinGrants,nlRankFilter,nlSortCol,nlSortDir]);
+  const nlDisplayed = useMemo(()=>
+    applyFilters(Array.from(nlResultsMapRef.current.values()),
+      {search:nlTableSearch,minH:nlMinH,minGrants:nlMinGrants,rankFilter:nlRankFilter,sortCol:nlSortCol,sortDir:nlSortDir,loading:nlLoading}),
+    [nlTick,nlLoading,nlTableSearch,nlMinH,nlMinGrants,nlRankFilter,nlSortCol,nlSortDir]);
 
   const exportCSV=()=>{
     const hdr=['Name','School','State','Title','H-Index','NIH Grants','NIH Grant Titles','Leadership','Editorial','Societies','Profile URL'];
@@ -1196,15 +1386,6 @@ function App() {
     </th>
   );
 
-  const rolesSummary = f => {
-    const parts=[];
-    if((f.leadership_roles||[]).length) parts.push(`${f.leadership_roles.length} leadership`);
-    if((f.editorial_roles||[]).length) parts.push(`${f.editorial_roles.length} editorial`);
-    if((f.society_roles||[]).length) parts.push(`${f.society_roles.length} society`);
-    if((f.training_roles||[]).length) parts.push(`${f.training_roles.length} training`);
-    return parts;
-  };
-
   return (
     <div style={{minHeight:'100vh',background:'var(--bg)',display:'flex',flexDirection:'column'}}>
       {detailFaculty&&<FacultyDetail faculty={detailFaculty} onClose={()=>setDetail(null)} onOpenQc={()=>setQcModal(detailFaculty)}/>}
@@ -1220,8 +1401,8 @@ function App() {
             <span style={{width:6,height:6,borderRadius:'50%',flexShrink:0,background:(loading||nlLoading)?'oklch(72% 0.15 80)':'var(--qg-tx)',animation:(loading||nlLoading)?'pulse 1.4s ease-in-out infinite':'none',transition:'background 0.4s'}}/>
             <span style={{fontSize:11,color:'var(--ink3)'}}>
               {activeTab==='search'
-                ?(loading?`${results.length} enriched…`:ran?`${displayed.length} of ${results.length} shown`:'NIH Reporter · Scopus · LCME · AOA')
-                :(nlLoading?`${nlResults.length} enriched…`:nlRan?`${nlDisplayed.length} of ${nlResults.length} shown`:'NIH Reporter · Scopus · LCME · AOA')
+                ?(loading?`${resultsMapRef.current.size} enriched…`:ran?`${displayed.length} of ${resultsMapRef.current.size} shown`:'NIH Reporter · Scopus · LCME · AOA')
+                :(nlLoading?`${nlResultsMapRef.current.size} enriched…`:nlRan?`${nlDisplayed.length} of ${nlResultsMapRef.current.size} shown`:'NIH Reporter · Scopus · LCME · AOA')
               }
             </span>
           </div>
@@ -1240,8 +1421,8 @@ function App() {
               cursor:'pointer',transition:'color 0.15s',marginBottom:-1,
             }}>
               {label}
-              {t==='search'&&(ran||loading)&&<span style={{marginLeft:6,fontSize:10,fontWeight:700,color:loading?'var(--red-text)':'var(--qg-tx)',background:loading?'var(--red-bg2)':'var(--qg-bg)',padding:'1px 6px',borderRadius:10}}>{loading?'live':`${results.length}`}</span>}
-              {t==='lookup'&&(nlRan||nlLoading)&&<span style={{marginLeft:6,fontSize:10,fontWeight:700,color:nlLoading?'var(--red-text)':'var(--qg-tx)',background:nlLoading?'var(--red-bg2)':'var(--qg-bg)',padding:'1px 6px',borderRadius:10}}>{nlLoading?'live':`${nlResults.length}`}</span>}
+              {t==='search'&&(ran||loading)&&<span style={{marginLeft:6,fontSize:10,fontWeight:700,color:loading?'var(--red-text)':'var(--qg-tx)',background:loading?'var(--red-bg2)':'var(--qg-bg)',padding:'1px 6px',borderRadius:10}}>{loading?'live':`${resultsMapRef.current.size}`}</span>}
+              {t==='lookup'&&(nlRan||nlLoading)&&<span style={{marginLeft:6,fontSize:10,fontWeight:700,color:nlLoading?'var(--red-text)':'var(--qg-tx)',background:nlLoading?'var(--red-bg2)':'var(--qg-bg)',padding:'1px 6px',borderRadius:10}}>{nlLoading?'live':`${nlResultsMapRef.current.size}`}</span>}
             </button>
           ))}
         </div>
@@ -1371,7 +1552,7 @@ function App() {
                   <div style={{display:'flex',alignItems:'center',gap:0,fontSize:12,color:'var(--ink2)'}}>
                     <b style={{color:'var(--ink)'}}>{displayed.length}</b>
                     <span style={{marginLeft:4}}>shown</span>
-                    {results.length!==displayed.length&&<span style={{marginLeft:6,color:'var(--ink3)'}}>({results.length-displayed.length} filtered)</span>}
+                    {resultsMapRef.current.size!==displayed.length&&<span style={{marginLeft:6,color:'var(--ink3)'}}>({resultsMapRef.current.size-displayed.length} filtered)</span>}
                     {nihN>0&&<><span style={{display:'inline-block',width:1,height:12,background:'var(--border)',margin:'0 10px'}}/><b style={{color:'var(--ink)'}}>{nihN}</b><span style={{marginLeft:4}}>NIH-funded</span></>}
                     {avgH!==null&&<><span style={{display:'inline-block',width:1,height:12,background:'var(--border)',margin:'0 10px'}}/><span>avg H-index </span><b style={{color:'var(--ink)',marginLeft:4}}>{avgH}</b></>}
                   </div>
@@ -1421,82 +1602,10 @@ function App() {
                     </tr>
                   </thead>
                   <tbody>
-                    {displayed.map((f,i)=>{
-                      const meta=SCHOOL_META[f.school]||{};
-                      const h=f.h_index;
-                      const parts=rolesSummary(f);
-                      const cell={padding:'11px 14px',borderBottom:'1px solid var(--border-sub)',verticalAlign:'top'};
-                      return (
-                        <tr key={f.full_name+i} className="tr-hover" onClick={()=>setDetail(f)}
-                          style={{animation:`fadeUp 0.3s ${Math.min(i,14)*22}ms cubic-bezier(0.16,1,0.3,1) both`,cursor:'pointer'}}>
-                          <td style={cell}>
-                            <span className="name-cell" style={{
-                              fontFamily:"'Spectral',serif",fontStyle:'italic',
-                              fontSize:14,color:'var(--ink)',lineHeight:1.3,
-                              transition:'color 0.15s',
-                            }}>{f.full_name}</span>
-                            {f.profile_url&&(
-                              <a href={f.profile_url} target="_blank" rel="noreferrer"
-                                onClick={e=>e.stopPropagation()}
-                                style={{display:'block',fontSize:10,color:'var(--red)',textDecoration:'none',fontWeight:600,marginTop:2,letterSpacing:'0.02em'}}
-                                onMouseEnter={e=>e.currentTarget.style.textDecoration='underline'}
-                                onMouseLeave={e=>e.currentTarget.style.textDecoration='none'}
-                              >Profile ↗</a>
-                            )}
-                          </td>
-                          <td style={{...cell,overflow:'hidden'}}>
-                            <div style={{fontSize:12,color:'var(--ink2)',lineHeight:1.4,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{f.school}</div>
-                            {meta.state&&(
-                              <div style={{display:'flex',alignItems:'center',gap:5,marginTop:2}}>
-                                <span style={{fontSize:10,color:'var(--ink3)'}}>{STATE_NAMES[meta.state]||meta.state}</span>
-                                {meta.type&&<span style={{fontSize:9,fontWeight:700,padding:'1px 5px',borderRadius:3,background:(TYPE_COLOR[meta.type]||{}).bg,color:(TYPE_COLOR[meta.type]||{}).tx}}>{meta.type}</span>}
-                              </div>
-                            )}
-                          </td>
-                          <td style={{...cell,overflow:'hidden'}}>
-                            <div style={{fontSize:11,color:'var(--ink2)',lineHeight:1.4,overflow:'hidden',display:'-webkit-box',WebkitLineClamp:3,WebkitBoxOrient:'vertical'}}>
-                              {f.title||<span style={{color:'var(--ink3)'}}>—</span>}
-                            </div>
-                          </td>
-                          <td style={{...cell,textAlign:'center'}}>
-                            {h!=null
-                              ?<span style={{fontFamily:"'Spectral',serif",fontSize:18,fontWeight:600,color:h>=30?'var(--qg-tx)':h>=15?'var(--qy-tx)':'var(--ink2)'}}>{h}</span>
-                              :<span style={{color:'var(--ink3)',fontSize:13}}>—</span>
-                            }
-                          </td>
-                          <td style={cell}>
-                            {(f.nih_grant_count||0)>0?(()=>{
-                              const titles=(f.nih_grant_titles||'').split('|').map(s=>s.trim()).filter(Boolean);
-                              const first=titles[0]||'';
-                              return (
-                                <div>
-                                  <span style={{fontFamily:"'Spectral',serif",fontSize:16,fontWeight:600,color:'var(--red)'}}>{f.nih_grant_count}</span>
-                                  {first&&<div style={{fontSize:10,color:'var(--ink2)',marginTop:2,lineHeight:1.4,overflow:'hidden',display:'-webkit-box',WebkitLineClamp:2,WebkitBoxOrient:'vertical'}}>{first}</div>}
-                                </div>
-                              );
-                            })():<span style={{color:'var(--ink3)',fontSize:13}}>—</span>}
-                          </td>
-                          <td style={cell}>
-                            {parts.length>0
-                              ?<div style={{display:'flex',flexDirection:'column',gap:3}}>
-                                  {parts.map((p,j)=>(
-                                    <span key={j} style={{
-                                      display:'inline-block',fontSize:10,fontWeight:600,
-                                      color:'var(--red-text)',background:'var(--red-bg)',
-                                      padding:'2px 7px',borderRadius:10,
-                                      border:'1px solid var(--red-bg2)',
-                                      width:'fit-content',
-                                    }}>{p}</span>
-                                  ))}
-                                </div>
-                              :<span style={{color:'var(--ink3)',fontSize:12}}>—</span>
-                            }
-                          </td>
-                          <td style={{...cell,textAlign:'center'}}>
-                            <QcBadge overall={(f.qc||{}).overall} onClick={e=>{ e.stopPropagation(); setQcModal(f); }}/>
-                          </td>
-                        </tr>
-                      );
+                    {displayed.map(f=>{
+                      const isNew=!animatedNamesRef.current.has(f.full_name);
+                      if(isNew) animatedNamesRef.current.add(f.full_name);
+                      return <FacultyRow key={f.full_name} faculty={f} isNew={isNew} onRowClick={handleRowClick} onQcClick={handleQcClick}/>;
                     })}
                   </tbody>
                 </table>
@@ -1530,7 +1639,7 @@ function App() {
 
         {/* ── NAME LOOKUP TAB ── */}
         {activeTab==='lookup'&&(()=>{
-          const nlHasRun=nlLoading||nlResults.length>0||nlRan;
+          const nlHasRun=nlLoading||nlResultsMapRef.current.size>0||nlRan;
           const nlCanRun=nlParsed.length>0&&!nlParseError&&!nlLoading;
           return (
             <div style={{display:'flex',justifyContent:nlHasRun?'flex-start':'center',gap:24,alignItems:'flex-start'}}>
@@ -1712,7 +1821,7 @@ function App() {
                       <div style={{display:'flex',alignItems:'center',gap:0,fontSize:12,color:'var(--ink2)'}}>
                         <b style={{color:'var(--ink)'}}>{nlDisplayed.length}</b>
                         <span style={{marginLeft:4}}>shown</span>
-                        {nlResults.length!==nlDisplayed.length&&<span style={{marginLeft:6,color:'var(--ink3)'}}>({nlResults.length-nlDisplayed.length} filtered)</span>}
+                        {nlResultsMapRef.current.size!==nlDisplayed.length&&<span style={{marginLeft:6,color:'var(--ink3)'}}>({nlResultsMapRef.current.size-nlDisplayed.length} filtered)</span>}
                         {nlNihN>0&&<><span style={{display:'inline-block',width:1,height:12,background:'var(--border)',margin:'0 10px'}}/><b style={{color:'var(--ink)'}}>{nlNihN}</b><span style={{marginLeft:4}}>NIH-funded</span></>}
                         {nlAvgH!==null&&<><span style={{display:'inline-block',width:1,height:12,background:'var(--border)',margin:'0 10px'}}/><span>avg H-index </span><b style={{color:'var(--ink)',marginLeft:4}}>{nlAvgH}</b></>}
                       </div>
@@ -1754,64 +1863,10 @@ function App() {
                         </tr>
                       </thead>
                       <tbody>
-                        {nlDisplayed.map((f,i)=>{
-                          const h=f.h_index;
-                          const parts=rolesSummary(f);
-                          const cell={padding:'11px 14px',borderBottom:'1px solid var(--border-sub)',verticalAlign:'top'};
-                          return (
-                            <tr key={f.full_name+i} className="tr-hover" onClick={()=>setNlDetail(f)}
-                              style={{animation:`fadeUp 0.3s ${Math.min(i,14)*22}ms cubic-bezier(0.16,1,0.3,1) both`,cursor:'pointer'}}>
-                              <td style={cell}>
-                                <span className="name-cell" style={{fontFamily:"'Spectral',serif",fontStyle:'italic',fontSize:14,color:'var(--ink)',lineHeight:1.3,transition:'color 0.15s'}}>{f.full_name}</span>
-                                {f.profile_url&&(
-                                  <a href={f.profile_url} target="_blank" rel="noreferrer" onClick={e=>e.stopPropagation()}
-                                    style={{display:'block',fontSize:10,color:'var(--ink3)',marginTop:2,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap',textDecoration:'none'}}
-                                    onMouseEnter={e=>e.target.style.color='var(--red)'} onMouseLeave={e=>e.target.style.color='var(--ink3)'}>
-                                    ↗ profile
-                                  </a>
-                                )}
-                              </td>
-                              <td style={cell}>
-                                <div style={{fontSize:12,color:'var(--ink)',fontWeight:500,lineHeight:1.4}}>{f.school||<span style={{color:'var(--ink3)'}}>—</span>}</div>
-                              </td>
-                              <td style={{...cell,overflow:'hidden'}}>
-                                <div style={{fontSize:11,color:'var(--ink2)',lineHeight:1.4,overflow:'hidden',display:'-webkit-box',WebkitLineClamp:3,WebkitBoxOrient:'vertical'}}>
-                                  {f.title||<span style={{color:'var(--ink3)'}}>—</span>}
-                                </div>
-                              </td>
-                              <td style={{...cell,textAlign:'center'}}>
-                                {h!=null
-                                  ?<span style={{fontFamily:"'Spectral',serif",fontSize:18,fontWeight:600,color:h>=30?'var(--qg-tx)':h>=15?'var(--qy-tx)':'var(--ink2)'}}>{h}</span>
-                                  :<span style={{color:'var(--ink3)',fontSize:13}}>—</span>
-                                }
-                              </td>
-                              <td style={cell}>
-                                {(f.nih_grant_count||0)>0?(()=>{
-                                  const titles=(f.nih_grant_titles||'').split('|').map(s=>s.trim()).filter(Boolean);
-                                  const first=titles[0]||'';
-                                  return (
-                                    <div>
-                                      <span style={{fontFamily:"'Spectral',serif",fontSize:16,fontWeight:600,color:'var(--red)'}}>{f.nih_grant_count}</span>
-                                      {first&&<div style={{fontSize:10,color:'var(--ink2)',marginTop:2,lineHeight:1.4,overflow:'hidden',display:'-webkit-box',WebkitLineClamp:2,WebkitBoxOrient:'vertical'}}>{first}</div>}
-                                    </div>
-                                  );
-                                })():<span style={{color:'var(--ink3)',fontSize:13}}>—</span>}
-                              </td>
-                              <td style={cell}>
-                                {parts.length>0
-                                  ?<div style={{display:'flex',flexDirection:'column',gap:3}}>
-                                      {parts.map((p,j)=>(
-                                        <span key={j} style={{display:'inline-block',fontSize:10,fontWeight:600,color:'var(--red-text)',background:'var(--red-bg)',padding:'2px 7px',borderRadius:10,border:'1px solid var(--red-bg2)',width:'fit-content'}}>{p}</span>
-                                      ))}
-                                    </div>
-                                  :<span style={{color:'var(--ink3)',fontSize:12}}>—</span>
-                                }
-                              </td>
-                              <td style={{...cell,textAlign:'center'}}>
-                                <QcBadge overall={(f.qc||{}).overall} onClick={e=>{ e.stopPropagation(); setNlQcModal(f); }}/>
-                              </td>
-                            </tr>
-                          );
+                        {nlDisplayed.map(f=>{
+                          const isNew=!nlAnimatedNamesRef.current.has(f.full_name);
+                          if(isNew) nlAnimatedNamesRef.current.add(f.full_name);
+                          return <NlFacultyRow key={f.full_name} faculty={f} isNew={isNew} onRowClick={handleNlRowClick} onQcClick={handleNlQcClick}/>;
                         })}
                       </tbody>
                     </table>

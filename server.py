@@ -77,6 +77,20 @@ _SCHOOL_NAME_MAP: dict[str, str] = {
     "Intermountain Primary Children's Hospital":                              "University of Utah School of Medicine / Intermountain Primary Children's",
     "Children's Mercy Kansas City":                                           "University of Missouri-Kansas City School of Medicine / Children's Mercy",
     "Nemours Children's Hospital":                                            "Nemours Children's Health",
+    # US News top-40 additions
+    "UF Health Shands Children's Hospital":                                   "University of Florida College of Medicine",
+    "Loma Linda University Children's Hospital":                              "Loma Linda University School of Medicine",
+    "Children's Memorial Hermann Hospital":                                   "UTHealth Houston McGovern Medical School",
+    "Children's Hospital of Alabama":                                         "University of Alabama at Birmingham Heersink School of Medicine",
+    "Rainbow Babies and Children's Hospital":                                 "Case Western Reserve University School of Medicine",
+    "Riley Hospital for Children":                                            "Indiana University School of Medicine",
+    "Arkansas Children's Hospital":                                           "University of Arkansas for Medical Sciences College of Medicine",
+    "Mayo Clinic-Children's Minnesota Cardiovascular Collaborative":          "Mayo Clinic Alix School of Medicine / Children's Minnesota",
+    "Virginia Congenital Cardiac Collaborative":                              "University of Virginia School of Medicine",
+    "Ochsner Children's Hospital":                                            "Ochsner Clinical School / LSU Health New Orleans",
+    "Hassenfeld Children's Hospital at NYU Langone":                          "NYU Grossman School of Medicine",
+    "Oklahoma Children's Hospital OU Health":                                 "University of Oklahoma College of Medicine",
+    "Johns Hopkins All Children's Hospital":                                  "Johns Hopkins School of Medicine",
 }
 
 
