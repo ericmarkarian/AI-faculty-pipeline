@@ -22,6 +22,31 @@ from providers.base import ScraperProvider, FacultyRecord
 
 _TEXT_CHUNK_CHARS = 80000  # max plain-text chars per GPT-4o call
 
+_DISCOVER_PROMPT = """\
+Find the official faculty directory page(s) for the {discipline} division at {school}.
+
+I need up to TWO URLs:
+1. University faculty page — PREFERRED. Look on the medical school's own website AND on \
+department-level subdomains (e.g. pediatrics.northwestern.edu/faculty/cardio.html, \
+pediatrics.ucsf.edu/divisions/cardiology/faculty, medicine.stanford.edu/divisions/pedcard/faculty). \
+Department websites (e.g. pediatrics.<university>.edu) are the most common location for \
+division-level faculty lists — check them even if the school-level site has no directory. \
+University profiles list academic appointments, editorial roles, and grants.
+2. Hospital specialist page — SECONDARY. From the affiliated children's hospital website \
+(e.g. luriechildrens.org, seattlechildrens.org). \
+Finding a hospital page does NOT mean you can skip searching for the university page — always search for both.
+
+Each page must publicly list individual faculty members with names and titles — not a \
+research lab page, news page, or single-person bio.
+
+Return ONLY a JSON object with no explanation:
+{{
+  "university_url": "<university faculty directory URL or null>",
+  "hospital_url": "<hospital specialist directory URL or null>",
+  "notes": "<brief description or reason not found>"
+}}
+"""
+
 
 def _load_urls(urls_path: str) -> dict:
     p = Path(urls_path)
@@ -204,48 +229,10 @@ class GenericFacultyScraper(ScraperProvider):
         self._extraction_model = extraction_model
         self._client = OpenAI(api_key=os.environ.get("OPENAI_API_KEY"))
 
-    def _affiliated_hospitals(self, school: str) -> list[str]:
-        """Return affiliated hospitals for a school from the xlsx lookup table."""
-        try:
-            import pandas as pd
-            xlsx_path = Path(__file__).parent.parent / "medical_schools_lookup.xlsx"
-            df = pd.read_excel(xlsx_path, sheet_name=0)
-            mask = df["School Name"].str.strip().str.lower() == school.strip().lower()
-            row = df[mask]
-            if row.empty:
-                return []
-            hospitals = []
-            primary = str(row.iloc[0].get("Primary Teaching Hospital", "") or "").strip()
-            if primary and primary.lower() != "nan":
-                hospitals.append(primary)
-            affiliated = str(row.iloc[0].get("Major Affiliated Hospitals / Health Systems", "") or "").strip()
-            if affiliated and affiliated.lower() != "nan":
-                hospitals += [h.strip() for h in affiliated.split(";") if h.strip()]
-            return hospitals
-        except Exception:
-            return []
-
-    def _discover_url(self, school: str, discipline: str) -> str | None:
-        """Ask GPT-4o with web search to find the faculty directory URL, then cache it."""
-        print(f"    [GenericScraper] Discovering URL for {school!r} / {discipline!r} via web search...")
-
-        hospitals = self._affiliated_hospitals(school)
-        hospital_hint = ""
-        if hospitals:
-            hospital_list = "; ".join(hospitals)
-            hospital_hint = (
-                f" Note: {discipline} faculty at {school} may be listed under an affiliated "
-                f"hospital rather than the medical school itself. Affiliated hospitals include: "
-                f"{hospital_list}. Search these sites if the medical school site has no directory."
-            )
-
-        prompt = (
-            f"Find the exact URL of the official faculty directory page for the {discipline} "
-            f"division at {school}. The page must list individual faculty members with names "
-            f"and titles — not a department homepage or research page. Must be publicly accessible."
-            f"{hospital_hint} "
-            f"Return ONLY a JSON object: {{\"url\": \"<url or null>\", \"notes\": \"<brief reason>\"}}"
-        )
+    def _discover_urls(self, school: str, discipline: str) -> list[tuple[str, str]]:
+        """Ask GPT-4o with web search to find university + hospital faculty URLs, then cache."""
+        print(f"    [GenericScraper] Discovering URLs for {school!r} / {discipline!r} via web search...")
+        prompt = _DISCOVER_PROMPT.format(school=school, discipline=discipline)
         try:
             response = self._client.responses.create(
                 model="gpt-4o",
@@ -268,77 +255,126 @@ class GenericFacultyScraper(ScraperProvider):
             result = json.loads(match.group()) if match else json.loads(raw.strip())
         except Exception as e:
             print(f"    [GenericScraper] URL discovery failed: {e}")
-            return None
+            return []
 
-        url = result.get("url")
-        notes = result.get("notes", "")
+        university_url = result.get("university_url")
+        hospital_url   = result.get("hospital_url")
+        notes          = result.get("notes", "")
+        primary        = university_url or hospital_url
+
         self._urls.setdefault(discipline, {})[school] = {
-            "url": url, "notes": notes, "verified": bool(url), "needs_review": not bool(url)
+            "university_url": university_url,
+            "hospital_url":   hospital_url,
+            "url":            primary,   # backward-compat primary
+            "notes":          notes,
+            "verified":       bool(primary),
+            "needs_review":   not bool(primary),
         }
         Path(self._urls_path).parent.mkdir(parents=True, exist_ok=True)
         Path(self._urls_path).write_text(json.dumps(self._urls, indent=2))
-        if url:
-            print(f"    [GenericScraper] Discovered and cached: {url}")
-        else:
-            print(f"    [GenericScraper] Could not find URL: {notes}")
-        return url
 
-    def _get_url(self, school: str, discipline: str) -> str | None:
-        entry = self._urls.get(discipline, {}).get(school)
-        if entry and entry.get("url"):
-            return entry["url"]
-        return self._discover_url(school, discipline)
+        sources: list[tuple[str, str]] = []
+        if university_url:
+            print(f"    [GenericScraper] Discovered university URL: {university_url}")
+            sources.append((university_url, "university"))
+        if hospital_url:
+            print(f"    [GenericScraper] Discovered hospital URL: {hospital_url}")
+            sources.append((hospital_url, "hospital"))
+        if not sources:
+            print(f"    [GenericScraper] No URLs found: {notes}")
+        return sources
+
+    def _get_url_sources(self, school: str, discipline: str) -> list[tuple[str, str]]:
+        """Return ordered list of (url, source_type) — university first, hospital second."""
+        entry = self._urls.get(discipline, {}).get(school) or {}
+        sources: list[tuple[str, str]] = []
+        if entry.get("university_url"):
+            sources.append((entry["university_url"], "university"))
+        if entry.get("hospital_url"):
+            sources.append((entry["hospital_url"], "hospital"))
+        if not sources and entry.get("url"):
+            # Legacy entries that only have the flat "url" field
+            sources.append((entry["url"], "unknown"))
+        if not sources:
+            return self._discover_urls(school, discipline)
+        return sources
+
 
     def get_faculty(self, school: str, discipline: str) -> list[FacultyRecord]:
-        url = self._get_url(school, discipline)
-        if not url:
+        sources = self._get_url_sources(school, discipline)
+        if not sources:
             return []
-        time.sleep(self._delay)
 
-        extracted: list[dict] = []
-        try:
-            print(f"    [GenericScraper] Fetching (Playwright): {url}")
-            html = _fetch_html_playwright(url)
-            text = _html_to_text(html, base_url=url)
-            print(f"    [GenericScraper] Fetched {len(text)} chars of plain text")
-            # Follow pagination if present
-            extra_pages = _pagination_urls(html, url)
-            if extra_pages:
-                print(f"    [GenericScraper] Following {len(extra_pages)} pagination page(s)")
-            for page_url in extra_pages:
-                try:
-                    page_html = _fetch_html_playwright(page_url)
-                    text += "\n" + _html_to_text(page_html, base_url=page_url)
-                except Exception as pe:
-                    print(f"    [GenericScraper] Skipping pagination URL {page_url}: {pe}")
-            extracted = _extract_via_gpt4o(text, school, discipline, self._client, self._extraction_model)
-        except Exception as e:
-            print(f"    [GenericScraper] Playwright fetch failed ({e}), trying web search fallback...")
+        # Keyed by normalised name. University source overwrites hospital on profile_url/title
+        # so Agent 2's PlaywrightProfileScraper gets the richer academic bio URL.
+        merged: dict[str, FacultyRecord] = {}
+
+        for url, source_type in sources:
+            time.sleep(self._delay)
+            extracted: list[dict] = []
             try:
-                extracted = _extract_via_web_search(school, discipline, self._client)
-            except Exception as e2:
-                print(f"    [GenericScraper] Web search also failed: {e2}")
-                return []
+                print(f"    [GenericScraper] Fetching ({source_type}): {url}")
+                html = _fetch_html_playwright(url)
+                text = _html_to_text(html, base_url=url)
+                print(f"    [GenericScraper] Fetched {len(text)} chars of plain text")
+                extra_pages = _pagination_urls(html, url)
+                if extra_pages:
+                    print(f"    [GenericScraper] Following {len(extra_pages)} pagination page(s)")
+                for page_url in extra_pages:
+                    try:
+                        page_html = _fetch_html_playwright(page_url)
+                        text += "\n" + _html_to_text(page_html, base_url=page_url)
+                    except Exception as pe:
+                        print(f"    [GenericScraper] Skipping pagination URL {page_url}: {pe}")
+                extracted = _extract_via_gpt4o(text, school, discipline, self._client)
+            except Exception as e:
+                print(f"    [GenericScraper] Playwright fetch failed ({source_type}, {e})")
+                # Only fall back to web search when the university / legacy source fails —
+                # a missing hospital page is fine as long as the university page worked.
+                if source_type in ("university", "unknown"):
+                    print(f"    [GenericScraper] Trying web search fallback...")
+                    try:
+                        extracted = _extract_via_web_search(school, discipline, self._client)
+                    except Exception as e2:
+                        print(f"    [GenericScraper] Web search also failed: {e2}")
 
-        records: list[FacultyRecord] = []
-        for item in extracted:
-            if not isinstance(item, dict):
-                continue
-            name = item.get("full_name") or item.get("name") or ""
-            if not name:
-                continue
-            title_lower = (item.get("title") or "").lower()
-            if "by courtesy" in title_lower or "courtesy appointment" in title_lower:
-                print(f"    [GenericScraper] Skipping courtesy appointment: {name} ({item.get('title')})")
-                continue
-            records.append(FacultyRecord(
-                full_name=name.strip(),
-                title=(item.get("title") or "").strip() or None,
-                profile_url=item.get("profile_url") or None,
-                school=school,
-                subspecialty=None,
-                email=None,
-            ))
+            new_from_source = 0
+            for item in extracted:
+                if not isinstance(item, dict):
+                    continue
+                name = (item.get("full_name") or item.get("name") or "").strip()
+                if not name:
+                    continue
+                title_lower = (item.get("title") or "").lower()
+                if "by courtesy" in title_lower or "courtesy appointment" in title_lower:
+                    print(f"    [GenericScraper] Skipping courtesy appointment: {name}")
+                    continue
 
+                record: FacultyRecord = {
+                    "full_name":   name,
+                    "title":       (item.get("title") or "").strip() or None,
+                    "profile_url": item.get("profile_url") or None,
+                    "school":      school,
+                    "subspecialty": None,
+                    "email":       None,
+                }
+
+                key = name.lower()
+                if key not in merged:
+                    merged[key] = record
+                    new_from_source += 1
+                elif source_type == "university":
+                    # University wins: use its profile_url and title, keep other fields
+                    existing = merged[key]
+                    merged[key] = {
+                        **existing,
+                        "profile_url": record["profile_url"] or existing.get("profile_url"),
+                        "title":       record["title"]       or existing.get("title"),
+                    }
+                    new_from_source += 1
+
+            print(f"    [GenericScraper] {source_type}: {new_from_source} faculty (total merged: {len(merged)})")
+
+        records = list(merged.values())
         print(f"    [GenericScraper] Extracted {len(records)} faculty for {school}")
         return records

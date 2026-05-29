@@ -152,10 +152,13 @@ def _check_url(url: str) -> "bool | None":
     if not url:
         return None
     try:
+        # stream=True: only download headers — avoids hanging on slow/large responses
         resp = requests.get(
-            url, timeout=5, allow_redirects=True,
+            url, timeout=(5, 5), allow_redirects=True,
             headers={"User-Agent": "Mozilla/5.0"},
+            stream=True,
         )
+        resp.close()
         if resp.status_code == 403:
             return None  # bot-blocked, can't determine
         return resp.status_code < 400
@@ -233,22 +236,25 @@ def verify_faculty_roles(faculty: dict, client=None) -> dict:
     print(f"    [QC] {name} — checking {len(all_roles)} role(s) (URL + evidence)")
 
     # Check all URLs in parallel
-    urls = [r.get("source_url", "") for r in all_roles]
+    urls = [r.get("source_url") or "" for r in all_roles]
     url_results: dict[str, "bool | None"] = {}
     with ThreadPoolExecutor(max_workers=8) as pool:
         future_to_url = {pool.submit(_check_url, u): u for u in set(urls) if u}
-        for future in as_completed(future_to_url):
-            url_results[future_to_url[future]] = future.result()
+        for future in as_completed(future_to_url, timeout=60):
+            try:
+                url_results[future_to_url[future]] = future.result(timeout=12)
+            except Exception:
+                url_results[future_to_url[future]] = None
 
     role_details = []
     category_statuses: dict[str, list[str]] = {cat: [] for cat in ROLE_CATEGORIES}
 
     for r in all_roles:
         cat        = r.get("_cat", "editorial")
-        role_title = r.get("role", "")
-        org        = r.get("org", "")
+        role_title = r.get("role") or ""
+        org        = r.get("org") or ""
         evidence   = (r.get("evidence_text") or "").strip()
-        source_url = r.get("source_url", "")
+        source_url = r.get("source_url") or ""
 
         url_alive   = url_results.get(source_url) if source_url else None
         name_on_pg  = _name_in_evidence(name, evidence) or _name_in_url(name, source_url)

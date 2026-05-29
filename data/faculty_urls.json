@@ -145,6 +145,362 @@
       "notes": "This page lists individual faculty members with names and titles in the Pediatric Cardiology division at Boston Children's Hospital, an affiliate of Harvard Medical School.",
       "verified": true,
       "needs_review": false
+    },
+    "Baylor College of Medicine / Texas Children's Hospital": {
+      "university_url": "https://www.bcm.edu/departments/pediatrics/divisions-and-centers/cardiology",
+      "hospital_url": "https://www.texaschildrens.org/departments/pediatric-cardiology-heart-doctors-texas-childrens/our-houston-team",
+      "url": "https://www.bcm.edu/departments/pediatrics/divisions-and-centers/cardiology",
+      "notes": "The university faculty directory provides an overview of the division but does not list individual faculty members. The hospital directory lists individual pediatric cardiologists with their profiles.",
+      "verified": true,
+      "needs_review": false
+    },
+    "University of Colorado School of Medicine / Children's Hospital Colorado": {
+      "university_url": "https://som.cuanschutz.edu/Profiles/Faculty/List?DepartmentName=Pediatrics&DivisionTypeId=34&RankStatus=Regular",
+      "hospital_url": null,
+      "url": "https://som.cuanschutz.edu/Profiles/Faculty/List?DepartmentName=Pediatrics&DivisionTypeId=34&RankStatus=Regular",
+      "notes": "The university faculty directory lists individual faculty members with names and titles. The hospital's website does not provide a public directory of pediatric cardiology specialists.",
+      "verified": true,
+      "needs_review": false
+    },
+    "Duke University School of Medicine": {
+      "university_url": "https://pediatrics.duke.edu/divisions/cardiology/faculty",
+      "hospital_url": "https://www.dukehealth.org/pediatric-treatments/pediatric-cardiology",
+      "url": "https://pediatrics.duke.edu/divisions/cardiology/faculty",
+      "notes": "The university faculty directory provides a comprehensive list of faculty members with names and titles. The hospital page offers information about the pediatric cardiology program and specialists.",
+      "verified": true,
+      "needs_review": false
+    },
+    "Medical University of South Carolina": {
+      "university_url": "https://medicine.musc.edu/departments/pediatrics/clinical-divisions/cardiology/faculty",
+      "hospital_url": null,
+      "url": "https://medicine.musc.edu/departments/pediatrics/clinical-divisions/cardiology/faculty",
+      "notes": "The university faculty directory page lists individual faculty members with names and titles. No separate hospital specialist directory was found.",
+      "verified": true,
+      "needs_review": false
+    },
+    "University of Pennsylvania Perelman School of Medicine": {
+      "university_url": "https://www.med.upenn.edu/apps/faculty/index.php/g275",
+      "hospital_url": "https://www.chop.edu/services/pediatric-cardiology/our-team",
+      "url": "https://www.med.upenn.edu/apps/faculty/index.php/g275",
+      "notes": "The university faculty directory lists individual faculty members with names and titles. The hospital's 'Meet Your Pediatric Cardiology Team' page provides a comprehensive list of pediatric cardiologists with their names and photos.",
+      "verified": true,
+      "needs_review": false
+    },
+    "UC San Diego School of Medicine / Rady Children's Hospital": {
+      "university_url": "https://pediatrics.ucsd.edu/divisions/cardiology/faculty.html",
+      "hospital_url": "https://www.rchsd.org/programs-services/cardiology/",
+      "url": "https://pediatrics.ucsd.edu/divisions/cardiology/faculty.html",
+      "notes": "The university faculty directory lists individual faculty members with names and titles. The hospital page provides an overview of the Cardiology division but does not include a comprehensive list of specialists.",
+      "verified": true,
+      "needs_review": false
+    },
+    "Atrium Health / Levine Children's Hospital": {
+      "university_url": null,
+      "hospital_url": "https://atriumhealth.org/education/graduate-medical-education/physician-residencies/pediatrics/faculty",
+      "url": "https://atriumhealth.org/education/graduate-medical-education/physician-residencies/pediatrics/faculty",
+      "notes": "No university faculty directory found; hospital faculty directory available.",
+      "verified": true,
+      "needs_review": false
+    },
+    "UT Southwestern Medical Center / Children's Medical Center Dallas": {
+      "university_url": "https://www.utsouthwestern.edu/departments/pediatrics/divisions/cardiology/faculty.html",
+      "hospital_url": "https://www.childrens.com/specialties-services/specialty-centers-and-programs/heart-center",
+      "url": "https://www.utsouthwestern.edu/departments/pediatrics/divisions/cardiology/faculty.html",
+      "notes": "The university faculty directory provides a comprehensive list of faculty members with names and titles. The hospital's Heart Center page offers information about the program but does not include a detailed faculty directory.",
+      "verified": true,
+      "needs_review": false
+    },
+    "Dell Medical School, University of Texas at Austin / Dell Children's": {
+      "university_url": "https://dellmed.utexas.edu/education/academics/graduate-medical-education/pediatric-cardiology-fellowship/team",
+      "hospital_url": null,
+      "url": "https://dellmed.utexas.edu/education/academics/graduate-medical-education/pediatric-cardiology-fellowship/team",
+      "notes": "The university faculty directory lists individual faculty members with names and titles. No specific hospital specialist directory was found.",
+      "verified": true,
+      "needs_review": false
+    },
+    "University of Utah School of Medicine / Intermountain Primary Children's": {
+      "university_url": "https://medicine.utah.edu/pediatrics/cardiology/faculty",
+      "hospital_url": null,
+      "url": "https://medicine.utah.edu/pediatrics/cardiology/faculty",
+      "notes": "The university faculty directory lists individual faculty members with names and titles. The hospital website provides information about pediatric heart services but does not include a public directory of individual specialists.",
+      "verified": true,
+      "needs_review": false
+    },
+    "University of Michigan Medical School": {
+      "university_url": "https://www.mottchildren.org/conditions-treatments/ped-heart/conditions/tricuspid-atresia",
+      "hospital_url": null,
+      "url": "https://www.mottchildren.org/conditions-treatments/ped-heart/conditions/tricuspid-atresia",
+      "notes": "The university faculty directory for Pediatric Cardiology is available at the provided URL. No separate hospital specialist directory was found.",
+      "verified": true,
+      "needs_review": false
+    },
+    "Emory University School of Medicine / Children's Healthcare of Atlanta": {
+      "university_url": "https://med.emory.edu/departments/pediatrics/divisions/cardiology/faculty/index.html",
+      "hospital_url": "https://www.choa.org/medical-services/heart-center/pediatric-cardiology",
+      "url": "https://med.emory.edu/departments/pediatrics/divisions/cardiology/faculty/index.html",
+      "notes": "Both URLs provide comprehensive faculty listings for the Pediatric Cardiology division at Emory University School of Medicine and Children's Healthcare of Atlanta.",
+      "verified": true,
+      "needs_review": false
+    },
+    "University of Florida College of Medicine": {
+      "university_url": "https://pediatrics.med.ufl.edu/about-us/faculty-listing/",
+      "hospital_url": null,
+      "url": "https://pediatrics.med.ufl.edu/about-us/faculty-listing/",
+      "notes": "A specific faculty directory for the Pediatric Cardiology division was not found; the general Department of Pediatrics faculty listing is provided instead.",
+      "verified": true,
+      "needs_review": false
+    },
+    "Cleveland Clinic Lerner College of Medicine": {
+      "university_url": "https://my.clevelandclinic.org/lerner-college-medicine/faculty/current-faculty",
+      "hospital_url": "https://my.clevelandclinic.org/pediatrics/departments/cardiology/our-doctors",
+      "url": "https://my.clevelandclinic.org/lerner-college-medicine/faculty/current-faculty",
+      "notes": "The university faculty directory provides a general list of current faculty members, while the hospital specialist page offers a detailed directory of pediatric cardiology specialists.",
+      "verified": true,
+      "needs_review": false
+    },
+    "Loma Linda University School of Medicine": {
+      "university_url": "https://experts.llu.edu/en/organisations/pediatric-cardiology-division",
+      "hospital_url": "https://lluch.org/meet-our-providers",
+      "url": "https://experts.llu.edu/en/organisations/pediatric-cardiology-division",
+      "notes": "The university faculty directory provides detailed profiles of faculty members in the Pediatric Cardiology Division, including names, titles, and academic appointments. The hospital's 'Meet Our Doctors & Providers' page lists pediatric cardiology specialists with their contact information.",
+      "verified": true,
+      "needs_review": false
+    },
+    "UTHealth Houston McGovern Medical School": {
+      "university_url": "https://med.uth.edu/pediatrics/cardiology/team/",
+      "hospital_url": null,
+      "url": "https://med.uth.edu/pediatrics/cardiology/team/",
+      "notes": "The university faculty directory lists individual faculty members with names and titles. No hospital specialist directory was found.",
+      "verified": true,
+      "needs_review": false
+    },
+    "Keck School of Medicine USC / Children's Hospital Los Angeles": {
+      "university_url": "https://keck.usc.edu/pediatrics/faculty/",
+      "hospital_url": "https://www.chla.org/heart-institute/cardiology/team",
+      "url": "https://keck.usc.edu/pediatrics/faculty/",
+      "notes": "The university faculty directory lists all faculty members in the Department of Pediatrics, including those in Pediatric Cardiology. The hospital's specialist page provides a detailed list of the Pediatric Cardiology team at Children's Hospital Los Angeles.",
+      "verified": true,
+      "needs_review": false
+    },
+    "University of Pittsburgh School of Medicine / UPMC Children's Hospital": {
+      "university_url": null,
+      "hospital_url": "https://www.chp.edu/our-services/heart/cardiology/doctors-staff",
+      "url": "https://www.chp.edu/our-services/heart/cardiology/doctors-staff",
+      "notes": "No dedicated university faculty directory found; hospital directory provides comprehensive faculty information.",
+      "verified": true,
+      "needs_review": false
+    },
+    "University of Alabama at Birmingham Heersink School of Medicine": {
+      "university_url": "https://www.uab.edu/medicine/peds/cardiology/cardiology-faculty",
+      "hospital_url": "https://www.childrensal.org/services/cardiovascular-services/our-team",
+      "url": "https://www.uab.edu/medicine/peds/cardiology/cardiology-faculty",
+      "notes": "Both URLs provide comprehensive lists of faculty members with names and titles.",
+      "verified": true,
+      "needs_review": false
+    },
+    "Case Western Reserve University School of Medicine": {
+      "university_url": null,
+      "hospital_url": "https://www.uhhospitals.org/rainbow/the-center-of-pediatric-education/pediatric-fellowship-training-programs/pediatric-cardiology-fellowship/faculty",
+      "url": "https://www.uhhospitals.org/rainbow/the-center-of-pediatric-education/pediatric-fellowship-training-programs/pediatric-cardiology-fellowship/faculty",
+      "notes": "No dedicated faculty directory found on the Case Western Reserve University School of Medicine website; relevant information is available through the affiliated hospital's fellowship program page.",
+      "verified": true,
+      "needs_review": false
+    },
+    "Columbia University Vagelos College of Physicians and Surgeons": {
+      "university_url": "https://www.pediatrics.columbia.edu/about-us/divisions/cardiology",
+      "hospital_url": "https://www.nyp.org/pediatrics/heart/department-leadership",
+      "url": "https://www.pediatrics.columbia.edu/about-us/divisions/cardiology",
+      "notes": "The university faculty directory provides a comprehensive list of faculty members with names and titles. The hospital specialist page lists key leadership in pediatric cardiology and cardiac surgery.",
+      "verified": true,
+      "needs_review": false
+    },
+    "Ohio State University College of Medicine / Nationwide Children's": {
+      "university_url": null,
+      "hospital_url": "https://www.nationwidechildrens.org/specialties/heart-center-cardiology/meet-our-team",
+      "url": "https://www.nationwidechildrens.org/specialties/heart-center-cardiology/meet-our-team",
+      "notes": "No university faculty directory found; hospital directory available.",
+      "verified": true,
+      "needs_review": false
+    },
+    "Indiana University School of Medicine": {
+      "university_url": "https://medicine.iu.edu/pediatrics/specialties/cardiology/faculty",
+      "hospital_url": null,
+      "url": "https://medicine.iu.edu/pediatrics/specialties/cardiology/faculty",
+      "notes": "The university faculty directory lists individual faculty members with names and titles. The hospital website does not provide a comprehensive faculty directory but offers individual physician profiles.",
+      "verified": true,
+      "needs_review": false
+    },
+    "University of Arkansas for Medical Sciences College of Medicine": {
+      "university_url": "https://medicine.uams.edu/pediatrics/specialties/sections/cardiology/faculty/",
+      "hospital_url": "https://www.archildrens.org/programs-and-services/cardiology/heart-team",
+      "url": "https://medicine.uams.edu/pediatrics/specialties/sections/cardiology/faculty/",
+      "notes": "Both URLs provide comprehensive lists of faculty members with names and titles.",
+      "verified": true,
+      "needs_review": false
+    },
+    "Nemours Children's Health": {
+      "university_url": null,
+      "hospital_url": "https://www.nemours.org/services/pediatric-cardiology/our-team.html",
+      "url": "https://www.nemours.org/services/pediatric-cardiology/our-team.html",
+      "notes": "No university faculty directory found; hospital page lists pediatric cardiology team members.",
+      "verified": true,
+      "needs_review": false
+    },
+    "University of Missouri-Kansas City School of Medicine / Children's Mercy": {
+      "university_url": "https://med.umkc.edu/profiles/academic-and-clinical-departments/pediatrics/",
+      "hospital_url": "https://www.childrensmercy.org/departments-and-clinics/heart-center/heart-center-team/",
+      "url": "https://med.umkc.edu/profiles/academic-and-clinical-departments/pediatrics/",
+      "notes": "The university's pediatrics department page lists faculty members, including those in pediatric cardiology. The hospital's Heart Center team page provides detailed information on the medical staff, including pediatric cardiologists.",
+      "verified": true,
+      "needs_review": false
+    },
+    "Mayo Clinic Alix School of Medicine / Children's Minnesota": {
+      "university_url": "https://www.mayoclinic.org/departments-centers/childrens-center/pediatric-cardiology/doctors",
+      "hospital_url": "https://www.childrensmn.org/services/care-specialties-departments/cardiovascular-program/meet-the-team/",
+      "url": "https://www.mayoclinic.org/departments-centers/childrens-center/pediatric-cardiology/doctors",
+      "notes": "The Mayo Clinic Alix School of Medicine does not have a dedicated faculty directory for the Pediatric Cardiology division. However, the Mayo Clinic Children's Center provides a comprehensive list of pediatric cardiology doctors. Children's Minnesota offers a detailed team page for their cardiovascular program.",
+      "verified": true,
+      "needs_review": false
+    },
+    "University of Washington School of Medicine / Seattle Children's": {
+      "university_url": null,
+      "hospital_url": "https://www.seattlechildrens.org/clinics/heart/meet-your-team/",
+      "url": "https://www.seattlechildrens.org/clinics/heart/meet-your-team/",
+      "notes": "No dedicated faculty directory found on the University of Washington School of Medicine's website; hospital's Heart Center team page provides detailed faculty information.",
+      "verified": true,
+      "needs_review": false
+    },
+    "University of California San Francisco School of Medicine": {
+      "university_url": "https://pediatrics.ucsf.edu/cardiology-faculty",
+      "hospital_url": null,
+      "url": "https://pediatrics.ucsf.edu/cardiology-faculty",
+      "notes": "The university faculty directory lists individual faculty members with names and titles. No separate hospital specialist directory was found.",
+      "verified": true,
+      "needs_review": false
+    },
+    "University of Virginia School of Medicine": {
+      "university_url": "https://med.virginia.edu/pediatrics/divisions/pediatric-cardiology/our-faculty/",
+      "hospital_url": "https://uvahealth.com/services/childrens-heart",
+      "url": "https://med.virginia.edu/pediatrics/divisions/pediatric-cardiology/our-faculty/",
+      "notes": "The university faculty page lists individual faculty members with names and titles. The hospital page provides information about pediatric cardiology services but does not list individual specialists.",
+      "verified": true,
+      "needs_review": false
+    },
+    "Ochsner Clinical School / LSU Health New Orleans": {
+      "university_url": "https://www.medschool.lsuhsc.edu/Pediatrics/fellowship/cardiology/pc_faculty.aspx",
+      "hospital_url": null,
+      "url": "https://www.medschool.lsuhsc.edu/Pediatrics/fellowship/cardiology/pc_faculty.aspx",
+      "notes": "The university faculty directory lists individual faculty members with names and titles. The hospital's pediatric cardiology page does not provide a faculty directory.",
+      "verified": true,
+      "needs_review": false
+    },
+    "NYU Grossman School of Medicine": {
+      "university_url": "https://med.nyu.edu/departments-institutes/pediatrics/divisions/pediatric-cardiology",
+      "hospital_url": null,
+      "url": "https://med.nyu.edu/departments-institutes/pediatrics/divisions/pediatric-cardiology",
+      "notes": "The university faculty directory for the Division of Pediatric Cardiology at NYU Grossman School of Medicine is available. No separate hospital specialist directory was found.",
+      "verified": true,
+      "needs_review": false
+    },
+    "University of Oklahoma College of Medicine": {
+      "university_url": "https://healthdev.ou.edu/medicine/academic-departments/pediatrics/sections/cardiology",
+      "hospital_url": "https://www.ouhealth.com/oklahoma-childrens-hospital/childrens-services/heart-care-for-children/",
+      "url": "https://healthdev.ou.edu/medicine/academic-departments/pediatrics/sections/cardiology",
+      "notes": "The university page provides an overview of the Pediatric Cardiology section but does not list individual faculty members. The hospital page offers information about pediatric heart care services but also lacks a faculty directory.",
+      "verified": true,
+      "needs_review": false
+    },
+    "Johns Hopkins School of Medicine": {
+      "university_url": "https://www.hopkinsmedicine.org/johns-hopkins-childrens-center/healthcare-professionals/education/fellowships/cardiology/fellowship-faculty",
+      "hospital_url": "https://www.hopkinsmedicine.org/johns-hopkins-childrens-center/what-we-treat/specialties/pediatric-and-congenital-heart-center/our-team",
+      "url": "https://www.hopkinsmedicine.org/johns-hopkins-childrens-center/healthcare-professionals/education/fellowships/cardiology/fellowship-faculty",
+      "notes": "The university faculty directory is available on the Johns Hopkins Children's Center website, listing faculty members with names and titles. The hospital specialist directory is also available on the same website, providing a comprehensive list of pediatric cardiology specialists.",
+      "verified": true,
+      "needs_review": false
+    },
+    "David Geffen School of Medicine at UCLA / Mattel Children's Hospital": {
+      "university_url": null,
+      "hospital_url": null,
+      "url": null,
+      "notes": "No publicly available faculty directory found for the Pediatric Cardiology division at David Geffen School of Medicine at UCLA or Mattel Children's Hospital.",
+      "verified": false,
+      "needs_review": true
+    }
+  },
+  "Cardiology": {
+    "Atrium Health / Levine Children's Hospital": {
+      "university_url": null,
+      "hospital_url": "https://atriumhealth.org/education/graduate-medical-education/physician-residencies/pediatrics/faculty",
+      "url": "https://atriumhealth.org/education/graduate-medical-education/physician-residencies/pediatrics/faculty",
+      "notes": "No university faculty directory found; hospital faculty directory lists pediatric cardiology faculty.",
+      "verified": true,
+      "needs_review": false
+    },
+    "UT Southwestern Medical Center / Children's Medical Center Dallas": {
+      "university_url": "https://www.utsouthwestern.edu/departments/pediatrics/divisions/cardiology/faculty.html",
+      "hospital_url": null,
+      "url": "https://www.utsouthwestern.edu/departments/pediatrics/divisions/cardiology/faculty.html",
+      "notes": "The university faculty directory for the Pediatric Cardiology division at UT Southwestern Medical Center is available. No separate faculty directory was found on the Children's Medical Center Dallas website.",
+      "verified": true,
+      "needs_review": false
+    },
+    "Dell Medical School, University of Texas at Austin / Dell Children's": {
+      "university_url": "https://dellmed.utexas.edu/education/academics/graduate-medical-education/cardiovascular-disease-fellowship/team",
+      "hospital_url": null,
+      "url": "https://dellmed.utexas.edu/education/academics/graduate-medical-education/cardiovascular-disease-fellowship/team",
+      "notes": "The university faculty directory for the Cardiology division is available through the Cardiovascular Disease Fellowship team page. No specific hospital specialist directory was found on the Dell Children's Medical Center website.",
+      "verified": true,
+      "needs_review": false
+    },
+    "University of Cincinnati College of Medicine / Cincinnati Children's": {
+      "university_url": "https://med.uc.edu/depart/intmed/divisions/cardio/directory",
+      "hospital_url": "https://www.cincinnatichildrens.org/service/c/cardiology/team",
+      "url": "https://med.uc.edu/depart/intmed/divisions/cardio/directory",
+      "notes": "Both URLs provide comprehensive lists of faculty members with names and titles.",
+      "verified": true,
+      "needs_review": false
+    }
+  },
+  "Adolescent Medicine": {
+    "Stanford University School of Medicine": {
+      "university_url": "https://med.stanford.edu/adolescent/faculty.html",
+      "hospital_url": "https://www.stanfordchildrens.org/en/services/adolescent-medicine/careteam.html",
+      "url": "https://med.stanford.edu/adolescent/faculty.html",
+      "notes": "Both URLs provide comprehensive lists of faculty members in the Adolescent Medicine division at Stanford University School of Medicine and Stanford Medicine Children's Health, respectively.",
+      "verified": true,
+      "needs_review": false
+    },
+    "University of Pennsylvania Perelman School of Medicine": {
+      "university_url": null,
+      "hospital_url": "https://www.chop.edu/centers-programs/adolescent-medicine/our-team",
+      "url": "https://www.chop.edu/centers-programs/adolescent-medicine/our-team",
+      "notes": "No dedicated faculty directory found on the University of Pennsylvania's website; faculty information is available through the Children's Hospital of Philadelphia.",
+      "verified": true,
+      "needs_review": false
+    },
+    "University of California San Francisco School of Medicine": {
+      "university_url": "https://pediatrics.ucsf.edu/1619756/adolescent-young-adult-medicine-faculty",
+      "hospital_url": "https://www.ucsfbenioffchildrens.org/care/adolescent-health",
+      "url": "https://pediatrics.ucsf.edu/1619756/adolescent-young-adult-medicine-faculty",
+      "notes": "The university faculty directory lists individual faculty members with names and titles. The hospital page provides information on adolescent health services but does not list individual specialists.",
+      "verified": true,
+      "needs_review": false
+    },
+    "Harvard Medical School": {
+      "university_url": null,
+      "hospital_url": "https://www.childrenshospital.org/departments/adolescent-and-young-adult-medicine/meet-our-team",
+      "url": "https://www.childrenshospital.org/departments/adolescent-and-young-adult-medicine/meet-our-team",
+      "notes": "No specific faculty directory found on Harvard Medical School's website; hospital directory provided.",
+      "verified": true,
+      "needs_review": false
+    },
+    "Johns Hopkins School of Medicine": {
+      "university_url": null,
+      "hospital_url": "https://www.hopkinsmedicine.org/johns-hopkins-childrens-center/what-we-treat/specialties/adolescent-medicine/our-team",
+      "url": "https://www.hopkinsmedicine.org/johns-hopkins-childrens-center/what-we-treat/specialties/adolescent-medicine/our-team",
+      "notes": "No university faculty directory found; hospital page lists faculty members.",
+      "verified": true,
+      "needs_review": false
     }
   }
 }

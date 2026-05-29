@@ -10,6 +10,12 @@ Search for **named roles** at these organizations (officer, board member, counci
 - Congenital Heart Surgeons' Society (CHSS)
 - International Society for Heart and Lung Transplantation (ISHLT)
 - Association for European Paediatric and Congenital Cardiology (AEPC)
+- PCICS - Pediatric Cardiac Intensive Care Society
+- ASE - American Society of Echocardiography
+- SOPE - Society of Pediatric Echocardiography
+- PPHN - Pediatric Pulmonary Hypertension Network
+
+
 
 ## Target Journals
 Search for **editorial board or editor roles** at these journals:
@@ -21,6 +27,13 @@ Search for **editorial board or editor roles** at these journals:
 - Congenital Heart Disease
 - Journal of Thoracic and Cardiovascular Surgery
 - Heart Rhythm
+- JASE - Journal of the American Society of Echo
+- Circulation: Arrhythmias and Electrophysiology
+- Journal of the American Heart Association
+- Annals of Thoracic Surgery
+- Cardiology in the Young
+- Journal of Pediatrics 
+
 
 ## Leadership Roles
 Include if held:
