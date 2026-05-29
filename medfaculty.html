@@ -200,6 +200,41 @@ function FacultyDetail({ faculty, onClose, onOpenQc }) {
           </div>
         </div>
 
+        {/* Email + Education */}
+        <div style={{padding:'20px 32px',borderBottom:'1px solid var(--border-sub)',display:'flex',flexDirection:'column',gap:12}}>
+          <div style={{display:'flex',alignItems:'center',gap:8}}>
+            <span style={{fontSize:10,fontWeight:700,color:'var(--ink3)',textTransform:'uppercase',
+              letterSpacing:'0.1em',minWidth:56}}>Email</span>
+            {faculty.email
+              ? <a href={`mailto:${faculty.email}`} style={{fontSize:13,color:'var(--red)',textDecoration:'none'}}
+                  onMouseEnter={e=>e.currentTarget.style.textDecoration='underline'}
+                  onMouseLeave={e=>e.currentTarget.style.textDecoration='none'}
+                >{faculty.email}</a>
+              : <span style={{fontSize:13,color:'var(--ink3)'}}>Not available</span>
+            }
+          </div>
+          <div>
+            <div style={{fontSize:10,fontWeight:700,color:'var(--ink3)',textTransform:'uppercase',
+              letterSpacing:'0.1em',marginBottom:8}}>Medical Training</div>
+            {faculty.education&&faculty.education.length>0
+              ? faculty.education.map((e,i)=>(
+                  <div key={i} style={{
+                    display:'flex',alignItems:'baseline',gap:8,
+                    padding:'7px 12px',marginBottom:4,borderRadius:6,
+                    background:'var(--surface)',border:'1px solid var(--border-sub)',
+                  }}>
+                    <span style={{fontSize:10,fontWeight:700,color:'var(--ink3)',textTransform:'uppercase',
+                      letterSpacing:'0.07em',minWidth:80,flexShrink:0}}>{e.type}</span>
+                    <span style={{fontSize:13,color:'var(--ink)',fontWeight:500}}>{e.institution}</span>
+                    {e.specialty&&<span style={{fontSize:12,color:'var(--ink2)'}}>· {e.specialty}</span>}
+                    {e.year&&<span style={{fontSize:12,color:'var(--ink3)',marginLeft:'auto',flexShrink:0}}>{e.year}</span>}
+                  </div>
+                ))
+              : <span style={{fontSize:13,color:'var(--ink3)'}}>Not available</span>
+            }
+          </div>
+        </div>
+
         {/* Roles */}
         <div style={{padding:'24px 32px',borderBottom:'1px solid var(--border-sub)'}}>
           <div style={{fontSize:10,fontWeight:700,color:'var(--ink3)',textTransform:'uppercase',
@@ -852,7 +887,7 @@ const PIPELINE_SCHOOLS=[
   {name:"Johns Hopkins All Children's Hospital",state:"FL",type:"Pipeline"},
 ];
 const ALL_SCHOOLS=[...MD_SCHOOLS,...DO_SCHOOLS,...PIPELINE_SCHOOLS].sort((a,b)=>a.name.localeCompare(b.name));
-const SPECIALTIES=["Allergy & Immunology","Anesthesiology","Cardiology","Cardiothoracic Surgery","Critical Care Medicine","Dermatology","Emergency Medicine","Endocrinology","Family Medicine","Gastroenterology","General Surgery","Geriatric Medicine","Hematology","Hospital Medicine","Infectious Disease","Internal Medicine","Medical Genetics","Nephrology","Neurology","Neurosurgery","Obstetrics & Gynecology","Oncology","Ophthalmology","Orthopedic Surgery","Otolaryngology (ENT)","Pain Medicine","Pathology","Pediatric Cardiology","Pediatric Endocrinology","Pediatric Gastroenterology","Pediatric Hematology/Oncology","Pediatric Nephrology","Pediatric Neurology","Pediatric Pulmonology","Pediatric Surgery","Pediatrics","Physical Medicine & Rehabilitation","Plastic Surgery","Psychiatry","Pulmonology","Radiation Oncology","Radiology","Reproductive Endocrinology","Rheumatology","Sleep Medicine","Sports Medicine","Thoracic Surgery","Urology","Vascular Surgery"];
+const SPECIALTIES=["Adolescent Medicine","Allergy & Immunology","Anesthesiology","Cardiology","Cardiothoracic Surgery","Critical Care Medicine","Dermatology","Emergency Medicine","Endocrinology","Family Medicine","Gastroenterology","General Surgery","Geriatric Medicine","Hematology","Hospital Medicine","Infectious Disease","Internal Medicine","Medical Genetics","Nephrology","Neurology","Neurosurgery","Obstetrics & Gynecology","Oncology","Ophthalmology","Orthopedic Surgery","Otolaryngology (ENT)","Pain Medicine","Pathology","Pediatric Cardiology","Pediatric Endocrinology","Pediatric Gastroenterology","Pediatric Hematology/Oncology","Pediatric Nephrology","Pediatric Neurology","Pediatric Pulmonology","Pediatric Surgery","Pediatrics","Physical Medicine & Rehabilitation","Plastic Surgery","Psychiatry","Pulmonology","Radiation Oncology","Radiology","Reproductive Endocrinology","Rheumatology","Sleep Medicine","Sports Medicine","Thoracic Surgery","Urology","Vascular Surgery"];
 const STATE_NAMES={AL:"Alabama",AK:"Alaska",AZ:"Arizona",AR:"Arkansas",CA:"California",CO:"Colorado",CT:"Connecticut",DC:"D.C.",FL:"Florida",GA:"Georgia",HI:"Hawaii",ID:"Idaho",IL:"Illinois",IN:"Indiana",IA:"Iowa",KS:"Kansas",KY:"Kentucky",LA:"Louisiana",ME:"Maine",MD:"Maryland",MA:"Massachusetts",MI:"Michigan",MN:"Minnesota",MS:"Mississippi",MO:"Missouri",MT:"Montana",NE:"Nebraska",NV:"Nevada",NH:"New Hampshire",NJ:"New Jersey",NM:"New Mexico",NY:"New York",NC:"North Carolina",ND:"North Dakota",OH:"Ohio",OK:"Oklahoma",OR:"Oregon",PA:"Pennsylvania",PR:"Puerto Rico",RI:"Rhode Island",SC:"South Carolina",SD:"South Dakota",TN:"Tennessee",TX:"Texas",UT:"Utah",VT:"Vermont",VA:"Virginia",WA:"Washington",WV:"West Virginia",WI:"Wisconsin",WY:"Wyoming"};
 const SCHOOL_META={};
 ALL_SCHOOLS.forEach(s=>{ SCHOOL_META[s.name]=s; });
@@ -972,7 +1007,13 @@ function rolesSummary(f) {
   return parts;
 }
 
-function applyFilters(items, {search,minH,minGrants,rankFilter,sortCol,sortDir,loading}) {
+const _MD_CREDS = /\b(MD|DO|MBBS|MBBCh|MBChB|MB BCh|MB BChir)\b/i;
+function hasMdDegree(f) {
+  if(_MD_CREDS.test(f.full_name||'')) return true;
+  return (f.education||[]).some(e=>(e.type||'').toLowerCase().includes('medical school'));
+}
+
+function applyFilters(items, {search,minH,minGrants,rankFilter,mdOnly,sortCol,sortDir,loading}) {
   const RO={instructor:1,assistant:2,associate:3,professor:4};
   const rankOf=t=>{ const s=(t||'').toLowerCase(); if(s.includes('associate')) return 3; if(s.includes('assistant')) return 2; if(s.includes('instructor')) return 1; if(s.includes('professor')) return 4; return 0; };
   let r=items;
@@ -980,6 +1021,7 @@ function applyFilters(items, {search,minH,minGrants,rankFilter,sortCol,sortDir,l
   if(minH)        r=r.filter(f=>(f.h_index??-1)>=+minH);
   if(minGrants)   r=r.filter(f=>(f.nih_grant_count??0)>=+minGrants);
   if(rankFilter!=='ALL') r=r.filter(f=>rankOf(f.title)>=(RO[rankFilter]||0));
+  if(mdOnly) r=r.filter(f=>hasMdDegree(f));
   if(!loading) r=[...r].sort((a,b)=>{
     let av=a[sortCol]??'',bv=b[sortCol]??'';
     if(typeof av==='string'){av=av.toLowerCase();bv=bv.toLowerCase();}
@@ -1111,6 +1153,7 @@ function App() {
   const [minH,setMinH]               = useState('');
   const [minGrants,setMinGrants]     = useState('');
   const [rankFilter,setRankFilter]   = useState('ALL');
+  const [mdOnly,setMdOnly]           = useState(false);
   const resultsMapRef    = useRef(new Map());  // Map<full_name, record>
   const pendingRef       = useRef([]);          // SSE batch buffer
   const animatedNamesRef = useRef(new Set());   // names that have already animated
@@ -1145,6 +1188,7 @@ function App() {
   const [nlMinH,setNlMinH]             = useState('');
   const [nlMinGrants,setNlMinGrants]   = useState('');
   const [nlRankFilter,setNlRankFilter] = useState('ALL');
+  const [nlMdOnly,setNlMdOnly]         = useState(false);
   const [nlProgress,setNlProgress]     = useState({done:0,total:0,phase:''});
   const [nlErrorMsg,setNlErrorMsg]     = useState('');
   const [nlQcModal,setNlQcModal]       = useState(null);
@@ -1311,24 +1355,41 @@ function App() {
 
   const displayed = useMemo(()=>
     applyFilters(Array.from(resultsMapRef.current.values()),
-      {search:tableSearch,minH,minGrants,rankFilter,sortCol,sortDir,loading}),
-    [tick,loading,tableSearch,minH,minGrants,rankFilter,sortCol,sortDir]);
+      {search:tableSearch,minH,minGrants,rankFilter,mdOnly,sortCol,sortDir,loading}),
+    [tick,loading,tableSearch,minH,minGrants,rankFilter,mdOnly,sortCol,sortDir]);
 
   const sort=col=>{ if(sortCol===col) setSortDir(d=>d==='asc'?'desc':'asc'); else{setSortCol(col);setSortDir('asc');} };
   const nlSort=col=>{ if(nlSortCol===col) setNlSortDir(d=>d==='asc'?'desc':'asc'); else{setNlSortCol(col);setNlSortDir('asc');} };
 
   const nlDisplayed = useMemo(()=>
     applyFilters(Array.from(nlResultsMapRef.current.values()),
-      {search:nlTableSearch,minH:nlMinH,minGrants:nlMinGrants,rankFilter:nlRankFilter,sortCol:nlSortCol,sortDir:nlSortDir,loading:nlLoading}),
-    [nlTick,nlLoading,nlTableSearch,nlMinH,nlMinGrants,nlRankFilter,nlSortCol,nlSortDir]);
+      {search:nlTableSearch,minH:nlMinH,minGrants:nlMinGrants,rankFilter:nlRankFilter,mdOnly:nlMdOnly,sortCol:nlSortCol,sortDir:nlSortDir,loading:nlLoading}),
+    [nlTick,nlLoading,nlTableSearch,nlMinH,nlMinGrants,nlRankFilter,nlMdOnly,nlSortCol,nlSortDir]);
 
   const exportCSV=()=>{
-    const hdr=['Name','School','State','Title','H-Index','NIH Grants','NIH Grant Titles','Leadership','Editorial','Societies','Profile URL'];
+    const hdr=['Name','School','State','Title','Email','H-Index','NIH Grants','NIH Grant Titles','Leadership','Academic Editorial Roles','Societies','Educational Leadership Roles','QC Overall','QC NIH','QC H-Index','QC Editorial','QC Society','QC Leadership','QC Training','QC Role Details','Education/Training History','Profile URL'];
+    const fmtQcDetails=details=>(details||[]).map(d=>{
+      const url=d.url_alive===true?'url=alive':d.url_alive===false?'url=dead':'url=unknown';
+      const nm=d.name_on_page?'name=✓':'name=✗';
+      const rl=d.role_on_page?'role=✓':'role=✗';
+      return`[${(d.status||'').toUpperCase()}] ${d.category}: "${d.role||''}" @ "${d.org||''}" | ${url} ${nm} ${rl}${d.source_url?' | '+d.source_url:''}`;
+    }).join('\n');
+    const fmtEducation=edu=>(edu||[]).map(e=>{
+      const parts=[e.type,e.institution,e.specialty].filter(Boolean).join(', ');
+      return e.year?`${parts} (${e.year})`:parts;
+    }).join('; ');
     const rows=displayed.map(f=>{
       const meta=SCHOOL_META[f.school]||{};
-      const fmt=arr=>(arr||[]).map(r=>r.role||'').filter(Boolean).join('; ');
+      const fmt=arr=>(arr||[]).map(r=>[r.role,r.org].filter(Boolean).join(' @ ')).filter(Boolean).join('; ');
       const gt=[...new Set((f.nih_grant_titles||'').split('|').map(s=>s.trim()).filter(Boolean))].join('; ');
-      return[f.full_name,f.school,meta.state||'',f.title||'',f.h_index??'',f.nih_grant_count||0,gt,fmt(f.leadership_roles),fmt(f.editorial_roles),fmt(f.society_roles),f.profile_url||''];
+      const qc=f.qc||{};
+      return[f.full_name,f.school,meta.state||'',f.title||'',f.email||'',f.h_index??'',f.nih_grant_count||0,gt,
+        fmt(f.leadership_roles),fmt(f.editorial_roles),fmt(f.society_roles),fmt(f.training_roles),
+        qc.overall||'',qc.nih_confidence||'',qc.hindex_confidence||'',
+        qc.editorial_confidence||'',qc.society_confidence||'',qc.leadership_confidence||'',qc.training_confidence||'',
+        fmtQcDetails(qc.role_details),
+        fmtEducation(f.education),
+        f.profile_url||''];
     });
     const csv=[hdr,...rows].map(r=>r.map(v=>`"${String(v).replace(/"/g,'""')}"`).join(',')).join('\n');
     const a=document.createElement('a');
@@ -1338,11 +1399,28 @@ function App() {
   };
 
   const nlExportCSV=()=>{
-    const hdr=['Name','Institution','Title','H-Index','NIH Grants','NIH Grant Titles','Leadership','Editorial','Societies','Profile URL'];
+    const hdr=['Name','Institution','Title','Email','H-Index','NIH Grants','NIH Grant Titles','Leadership','Academic Editorial Roles','Societies','Educational Leadership Roles','QC Overall','QC NIH','QC H-Index','QC Editorial','QC Society','QC Leadership','QC Training','QC Role Details','Education/Training History','Profile URL'];
+    const fmtQcDetails=details=>(details||[]).map(d=>{
+      const url=d.url_alive===true?'url=alive':d.url_alive===false?'url=dead':'url=unknown';
+      const nm=d.name_on_page?'name=✓':'name=✗';
+      const rl=d.role_on_page?'role=✓':'role=✗';
+      return`[${(d.status||'').toUpperCase()}] ${d.category}: "${d.role||''}" @ "${d.org||''}" | ${url} ${nm} ${rl}${d.source_url?' | '+d.source_url:''}`;
+    }).join('\n');
+    const fmtEducation=edu=>(edu||[]).map(e=>{
+      const parts=[e.type,e.institution,e.specialty].filter(Boolean).join(', ');
+      return e.year?`${parts} (${e.year})`:parts;
+    }).join('; ');
     const rows=nlDisplayed.map(f=>{
-      const fmt=arr=>(arr||[]).map(r=>r.role||'').filter(Boolean).join('; ');
+      const fmt=arr=>(arr||[]).map(r=>[r.role,r.org].filter(Boolean).join(' @ ')).filter(Boolean).join('; ');
       const gt=[...new Set((f.nih_grant_titles||'').split('|').map(s=>s.trim()).filter(Boolean))].join('; ');
-      return[f.full_name,f.school,f.title||'',f.h_index??'',f.nih_grant_count||0,gt,fmt(f.leadership_roles),fmt(f.editorial_roles),fmt(f.society_roles),f.profile_url||''];
+      const qc=f.qc||{};
+      return[f.full_name,f.school,f.title||'',f.email||'',f.h_index??'',f.nih_grant_count||0,gt,
+        fmt(f.leadership_roles),fmt(f.editorial_roles),fmt(f.society_roles),fmt(f.training_roles),
+        qc.overall||'',qc.nih_confidence||'',qc.hindex_confidence||'',
+        qc.editorial_confidence||'',qc.society_confidence||'',qc.leadership_confidence||'',qc.training_confidence||'',
+        fmtQcDetails(qc.role_details),
+        fmtEducation(f.education),
+        f.profile_url||''];
     });
     const csv=[hdr,...rows].map(r=>r.map(v=>`"${String(v).replace(/"/g,'""')}"`).join(',')).join('\n');
     const a=document.createElement('a');
@@ -1490,6 +1568,13 @@ function App() {
                 <div style={{fontSize:10,color:'var(--ink3)',marginBottom:6}}>Academic Rank</div>
                 <Pills value={rankFilter} onChange={setRankFilter}
                   options={[['ALL','Any'],['instructor','Instr+'],['assistant','Asst+'],['associate','Assoc+'],['professor','Full']]}/>
+              </div>
+              <div style={{marginBottom:16}}>
+                <label style={{display:'flex',alignItems:'center',gap:8,cursor:'pointer',userSelect:'none'}}>
+                  <input type="checkbox" checked={mdOnly} onChange={e=>setMdOnly(e.target.checked)}
+                    style={{width:14,height:14,accentColor:'var(--red)',cursor:'pointer'}}/>
+                  <span style={{fontSize:11,color:'var(--ink2)',fontWeight:500}}>MD / DO / MBBS only</span>
+                </label>
               </div>
 
               {errorMsg&&<div style={{marginBottom:12,padding:'9px 12px',borderRadius:6,background:'var(--qr-bg)',border:'1px solid var(--qr-bd)',color:'var(--qr-tx)',fontSize:12,fontWeight:500}}>{errorMsg}</div>}
@@ -1763,6 +1848,13 @@ function App() {
                     <div style={{fontSize:10,color:'var(--ink3)',marginBottom:6}}>Academic Rank</div>
                     <Pills value={nlRankFilter} onChange={setNlRankFilter}
                       options={[['ALL','Any'],['instructor','Instr+'],['assistant','Asst+'],['associate','Assoc+'],['professor','Full']]}/>
+                  </div>
+                  <div style={{marginBottom:16}}>
+                    <label style={{display:'flex',alignItems:'center',gap:8,cursor:'pointer',userSelect:'none'}}>
+                      <input type="checkbox" checked={nlMdOnly} onChange={e=>setNlMdOnly(e.target.checked)}
+                        style={{width:14,height:14,accentColor:'var(--red)',cursor:'pointer'}}/>
+                      <span style={{fontSize:11,color:'var(--ink2)',fontWeight:500}}>MD / DO / MBBS only</span>
+                    </label>
                   </div>
 
                   {nlErrorMsg&&<div style={{marginBottom:12,padding:'9px 12px',borderRadius:6,background:'var(--qr-bg)',border:'1px solid var(--qr-bd)',color:'var(--qr-tx)',fontSize:12,fontWeight:500}}>{nlErrorMsg}</div>}

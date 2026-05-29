@@ -30,7 +30,7 @@ load_dotenv()
 import observe
 from providers.live import LiveNihProvider, LiveRolesProvider, LiveHIndexProvider, merge_specialty_considerations
 from providers.generic_faculty_scraper import GenericFacultyScraper
-from providers.profile_scrapers import StanfordProfileScraper, TavilyProfileScraper
+from providers.profile_scrapers import StanfordProfileScraper, TavilyProfileScraper, PlaywrightProfileScraper
 from providers.profile_scrapers.base import ProfileScraper
 from providers.qc import verify_faculty_roles
 
@@ -316,7 +316,8 @@ If a field is not available, use null.
 
 _PROFILE_SCRAPERS: list[ProfileScraper] = [
     StanfordProfileScraper(),
-    TavilyProfileScraper(),  # catch-all stub
+    # TavilyProfileScraper(),  # original catch-all stub (no-op, fell through to LLM)
+    PlaywrightProfileScraper(),  # fetches profile page + GPT-4o extraction
 ]
 
 
@@ -340,7 +341,7 @@ def agent2_enrich(
     if roles_provider is None:
         roles_provider = LiveRolesProvider(client)
     if hindex_provider is None:
-        hindex_provider = LiveHIndexProvider(SCOPUS_API_KEY)
+        hindex_provider = LiveHIndexProvider()
 
     t0 = time.time()
     name = faculty.get("full_name", "Unknown")
@@ -361,7 +362,7 @@ def agent2_enrich(
     h_index          = None
 
     # H-index via Scopus
-    print(f"    -> Fetching H-index via Scopus...")
+    print(f"    -> Fetching H-index via OpenAlex...")
     try:
         hindex_data = hindex_provider.get_hindex(name, school)
         h_index = hindex_data.get("h_index")
@@ -371,14 +372,23 @@ def agent2_enrich(
 
     # Try profile scraper first for roles — free, deterministic, no LLM
     profile_scraper_roles: list | None = None
+    profile_email: str | None = None
+    profile_education: list = []
     if profile_url:
         scraper = _get_profile_scraper(profile_url)
-        if scraper and not isinstance(scraper, TavilyProfileScraper):
+        if scraper:
             try:
-                scraped = scraper.get_roles(profile_url)
+                profile_data = scraper.get_profile_data(profile_url)
+                scraped = profile_data.get("roles") or []
+                profile_email = profile_data.get("email") or None
+                profile_education = profile_data.get("education") or []
                 if scraped:
                     profile_scraper_roles = scraped
                     print(f"    -> [ProfileScraper] {len(scraped)} roles from profile page (no LLM)")
+                if profile_email:
+                    print(f"    -> [ProfileScraper] Email: {profile_email}")
+                if profile_education:
+                    print(f"    -> [ProfileScraper] {len(profile_education)} education entries")
             except Exception as e:
                 print(f"    [!] ProfileScraper error, falling back to LLM: {e}")
 
@@ -422,11 +432,14 @@ def agent2_enrich(
             if isinstance(result, Exception):
                 print(f"    [!] Roles search failed for {name}: {result}")
             else:
-                # get_roles_and_title returns (title, roles); get_roles returns just roles
+                # get_roles_and_title returns (title, roles, discovered_urls); get_roles returns just roles
+                discovered_profile_urls: list[str] = []
                 if need_title and isinstance(result, tuple):
-                    extracted_title, all_roles = result
+                    extracted_title, all_roles, discovered_profile_urls = result
                     if extracted_title:
                         print(f"    -> [LLM] Title found: {extracted_title}")
+                    for u in discovered_profile_urls:
+                        print(f"    -> [LLM] Profile URL discovered: {u}")
                 else:
                     all_roles = result
                 editorial_roles  = [r for r in all_roles if r.get("category") == "editorial"]
@@ -434,6 +447,42 @@ def agent2_enrich(
                 training_roles   = [r for r in all_roles if r.get("category") == "training"]
                 leadership_roles = [r for r in all_roles if r.get("category") == "leadership"]
                 print(f"    -> [LLM] Editorial: {len(editorial_roles)}, Society: {len(society_roles)}, Training: {len(training_roles)}, Leadership: {len(leadership_roles)}")
+
+                # Collect all candidate profile URLs to scrape for email/education
+                if not profile_email and not profile_education:
+                    _PROFILE_URL_PATTERNS = (
+                        "/people/", "/faculty/", "/profile", "/bio/", "/staff/",
+                        "profiles.", "faculty.", "directory.",
+                    )
+                    last_lower = name.split()[-1].lower() if name.split() else ""
+
+                    # Build ordered list: LLM-discovered URLs first, then role source_urls
+                    candidate_urls: list[str] = list(discovered_profile_urls)
+                    seen = {u.lower() for u in candidate_urls}
+                    for r in all_roles:
+                        su = r.get("source_url") or ""
+                        if su.lower() not in seen and any(p in su.lower() for p in _PROFILE_URL_PATTERNS):
+                            candidate_urls.append(su)
+                            seen.add(su.lower())
+
+                    for candidate_url in candidate_urls:
+                        scraper = _get_profile_scraper(candidate_url)
+                        if not scraper:
+                            continue
+                        try:
+                            pd = scraper.get_profile_data(candidate_url)
+                            if not profile_email:
+                                profile_email = pd.get("email") or None
+                            if not profile_education:
+                                profile_education = pd.get("education") or []
+                            if profile_email:
+                                print(f"    -> [ProfileScraper/LLM-URL] Email: {profile_email} (from {candidate_url})")
+                            if profile_education:
+                                print(f"    -> [ProfileScraper/LLM-URL] {len(profile_education)} education entries (from {candidate_url})")
+                        except Exception as e:
+                            print(f"    [!] ProfileScraper on {candidate_url} failed: {e}")
+                        if profile_email and profile_education:
+                            break  # got everything we need
 
     nih_project_nums = ", ".join(g["project_num"] for g in nih_grants)
     nih_grant_titles = " | ".join(g["title"] for g in nih_grants)
@@ -460,6 +509,8 @@ def agent2_enrich(
     return {
         **faculty,
         "title": faculty.get("title") or extracted_title,
+        "email": faculty.get("email") or profile_email,
+        "education": profile_education or [],
         "h_index": h_index,
         "nih_project_nums":  nih_project_nums,
         "nih_grant_titles":  nih_grant_titles,
@@ -505,8 +556,8 @@ def _qc_cross_checks(results: list[dict]) -> None:
     for f in results:
         name = f.get("full_name", "?")
         for detail in (f.get("qc") or {}).get("role_details", []):
-            role_lower = detail.get("role", "").lower()
-            org_lower  = detail.get("org", "").lower()
+            role_lower = (detail.get("role") or "").lower()
+            org_lower  = (detail.get("org") or "").lower()
             if any(kw in role_lower for kw in SINGLETON_KEYWORDS):
                 key = f"{role_lower} @ {org_lower}"
                 role_holders[key].append(name)

@@ -171,7 +171,7 @@ def merge_specialty_considerations(discipline: str, user_input: str, openai_clie
 
 
 _ROLES_PROMPT = """\
-{discipline_context}Search the web for the professional roles and service activities of {name} at {school}.
+{discipline_context}Search the web for the professional roles and service activities of {name} at {school}.{profile_hint}
 
 Also find their current academic rank/title (e.g. "Professor", "Associate Professor", \
 "Assistant Professor", "Instructor", "Lecturer"). Look at their institutional faculty \
@@ -207,11 +207,15 @@ No markdown fences, no explanation — only the JSON object.
 """
 
 _TITLE_PROMPT = """\
-Look up the faculty profile page for {name} at {school}.
-Return ONLY a JSON object with one key:
+Look up the faculty profile page for {name} at {school}.{profile_hint}
+Return ONLY a JSON object with three keys:
 - "title": their current academic rank exactly as listed on their institutional profile \
 (e.g. "Professor", "Associate Professor", "Assistant Professor", "Clinical Professor", \
 "Instructor", "Lecturer"). Return null if not clearly stated.
+- "profile_urls": a list of direct URLs for this person's individual faculty profile pages. \
+Include both the department/division page (e.g. "https://pediatrics.ucsf.edu/people/jane-smith") \
+AND the university-wide profiles page (e.g. "https://profiles.ucsf.edu/jane.smith") if both exist. \
+List the department page first. Return [] if none found.
 
 No markdown fences, no explanation — only the JSON object.
 """
@@ -231,7 +235,8 @@ import os
 
 _NIH_SEARCH_URL = "https://api.reporter.nih.gov/v2/projects/search"
 _NIH_FIELDS = ["project_num", "project_title", "fiscal_year", "organization", "principal_investigators"]
-_NIH_CONFIDENCE_THRESHOLD = 0.60
+_NIH_CONFIDENCE_THRESHOLD = 0.60   # Phase 2 when institution is confirmed (inst_score=1.0)
+_NIH_STRICT_THRESHOLD     = 0.78   # Phase 2 when institution is unknown (inst_score=0.5)
 
 # Scoring weights — must sum to 1.0
 # name = who we're looking for (primary)
@@ -740,8 +745,20 @@ class LiveNihProvider(NihProvider):
               f"| profiles={len(profiles)}"
               f"{' | AMBIGUOUS' if ambiguous else ''})")
 
-        if score < _NIH_CONFIDENCE_THRESHOLD:
-            print(f"      [NIH] Low confidence (score={score:.2f}) — skipping {name}")
+        # Confirmed at a different known institution — definitely the wrong person
+        if best["inst_score"] == 0.3:
+            print(f"      [NIH] Phase 2: '{best['pi_name']}' confirmed at a different institution — skipping {name}")
+            return []
+
+        # Multiple close profiles with unconfirmed institution — too ambiguous to trust
+        if ambiguous and best["inst_score"] < 1.0:
+            print(f"      [NIH] Phase 2: ambiguous match (score gap < 0.05) with unconfirmed institution — skipping {name}")
+            return []
+
+        # Apply stricter threshold when institution is not confirmed
+        threshold = _NIH_CONFIDENCE_THRESHOLD if best["inst_score"] >= 1.0 else _NIH_STRICT_THRESHOLD
+        if score < threshold:
+            print(f"      [NIH] Low confidence (score={score:.2f} < {threshold:.2f}) — skipping {name}")
             return []
 
         grants = self._grants_for_profile(best_pid, p2_results, unconfirmed=True)
@@ -756,9 +773,14 @@ class LiveRolesProvider(RolesProvider):
         if considerations:
             self._discipline_context += f"\nAdditional guidance for this run:\n{considerations}\n"
 
-    def _fetch(self, name: str, school: str) -> dict:
+    def _fetch(self, name: str, school: str, profile_url: str = "") -> dict:
         """Make one web search call and return the parsed JSON (title + roles)."""
-        prompt = _ROLES_PROMPT.format(name=name, school=school, discipline_context=self._discipline_context)
+        profile_hint = f"\nStart by checking their profile page: {profile_url}" if profile_url else ""
+        prompt = _ROLES_PROMPT.format(
+            name=name, school=school,
+            discipline_context=self._discipline_context,
+            profile_hint=profile_hint,
+        )
         response = self._client.responses.create(
             model=_LIVE_MODEL,
             tools=[{"type": "web_search_preview"}],
@@ -781,12 +803,14 @@ class LiveRolesProvider(RolesProvider):
         return roles
 
     def get_roles(self, name: str, school: str, profile_url: str = "") -> list[RoleEvidence]:
-        return self._process_roles(self._fetch(name, school))
+        return self._process_roles(self._fetch(name, school, profile_url))
 
-    def get_roles_and_title(self, name: str, school: str, profile_url: str = "") -> tuple[str | None, list[RoleEvidence]]:
-        """Two web search calls: one for roles, one dedicated title lookup."""
-        roles = self._process_roles(self._fetch(name, school))
-        prompt = _TITLE_PROMPT.format(name=name, school=school)
+    def get_roles_and_title(self, name: str, school: str, profile_url: str = "") -> tuple[str | None, list[RoleEvidence], list[str]]:
+        """Two web search calls: one for roles, one dedicated title lookup.
+        Returns (title, roles, discovered_profile_urls)."""
+        roles = self._process_roles(self._fetch(name, school, profile_url))
+        profile_hint = f"\nTheir profile page is: {profile_url}" if profile_url else ""
+        prompt = _TITLE_PROMPT.format(name=name, school=school, profile_hint=profile_hint)
         response = self._client.responses.create(
             model=_LIVE_MODEL,
             tools=[{"type": "web_search_preview"}],
@@ -799,10 +823,14 @@ class LiveRolesProvider(RolesProvider):
                     if hasattr(item, "text"):
                         raw += item.text
         try:
-            title = _parse_json(raw).get("title") or None
+            parsed = _parse_json(raw)
+            title = parsed.get("title") or None
+            urls = parsed.get("profile_urls") or []
+            discovered_urls = [u for u in urls if isinstance(u, str) and u]
         except Exception:
             title = None
-        return title, roles
+            discovered_urls = []
+        return title, roles, discovered_urls
 
 
 # ── Scoring helpers (used by LiveHIndexProvider) ──────────────────────────────
@@ -854,14 +882,6 @@ def _extract_alternate_first(name: str) -> str | None:
     return m.group(1).strip() if m else None
 
 
-def _scopus_affil_str(entry: dict) -> str:
-    affil = entry.get("affiliation-current", {})
-    if isinstance(affil, list):
-        return " ".join(a.get("affiliation-name", "") for a in affil)
-    if isinstance(affil, dict):
-        return affil.get("affiliation-name", "")
-    return ""
-
 
 def _affil_matches(affil_str: str, aliases: list[str]) -> bool:
     """True if any alias fuzzy-matches the affiliation string."""
@@ -892,154 +912,148 @@ def _name_matches(first: str, last: str, entry: dict) -> bool:
     return s_first[0] == first[0].lower()
 
 
-def _scopus_get(url: str, params: dict, max_retries: int = 4) -> requests.Response:
-    """GET with exponential backoff on 429 rate-limit responses."""
+_OA_SEARCH_URL = "https://api.openalex.org/authors"
+_OA_EMAIL = "ericmarkar18@gmail.com"
+# Semaphore: 8 concurrent when API key present (100 req/sec tier), else 3 (polite pool 10 req/sec)
+_OA_API_KEY: str | None = None  # set at module load from env
+
+
+def _oa_init():
+    global _OA_API_KEY, _OA_SEMAPHORE
     import os
-    headers = {"Accept": "application/json"}
-    insttoken = os.environ.get("SCOPUS_INSTTOKEN")
-    if insttoken:
-        headers["X-ELS-Insttoken"] = insttoken
-    delay = 10.0
-    for attempt in range(max_retries):
-        resp = requests.get(url, params=params, headers=headers, timeout=15)
-        if resp.status_code != 429:
+    _OA_API_KEY = os.environ.get("OPENALEX_API_KEY") or None
+    limit = 8 if _OA_API_KEY else 3
+    _OA_SEMAPHORE = threading.Semaphore(limit)
+    if _OA_API_KEY:
+        print(f"[OpenAlex] API key loaded — using authenticated pool (concurrency={limit})")
+
+_OA_SEMAPHORE = threading.Semaphore(3)
+_oa_init()
+
+
+def _openalex_search(first: str, last: str) -> list[dict]:
+    """Search OpenAlex authors by name. Returns up to 10 results."""
+    for attempt in range(3):
+        try:
+            params: dict = {
+                "search": f"{first} {last}",
+                "per-page": 10,
+                "mailto": _OA_EMAIL,
+            }
+            headers: dict = {"Accept": "application/json"}
+            if _OA_API_KEY:
+                headers["Authorization"] = f"Bearer {_OA_API_KEY}"
+            with _OA_SEMAPHORE:
+                resp = requests.get(
+                    _OA_SEARCH_URL,
+                    params=params,
+                    headers=headers,
+                    timeout=15,
+                )
+            if resp.status_code == 429:
+                # x-ratelimit-reset is a Unix timestamp, not a duration
+                reset_ts = resp.headers.get("x-ratelimit-reset")
+                retry_after = resp.headers.get("Retry-After")
+                if reset_ts and str(reset_ts).isdigit():
+                    wait = max(float(reset_ts) - time.time(), 1.0)
+                elif retry_after and str(retry_after).isdigit():
+                    wait = float(retry_after)
+                else:
+                    wait = 5.0
+                wait = min(wait, 15.0)  # never block more than 15s
+                print(f"      [OpenAlex] Rate limited — waiting {wait:.1f}s (attempt {attempt+1}/3)")
+                time.sleep(wait)
+                continue
             resp.raise_for_status()
-            return resp
-        retry_after = resp.headers.get("X-RateLimit-Reset") or resp.headers.get("Retry-After")
-        wait = float(retry_after) if retry_after and retry_after.isdigit() else delay
-        print(f"      [Scopus] Rate limited — waiting {wait:.0f}s (attempt {attempt + 1}/{max_retries})")
-        time.sleep(wait)
-        delay = min(delay * 2, 120.0)
-    resp.raise_for_status()
-    return resp
+            return resp.json().get("results", [])
+        except Exception:
+            if attempt < 2:
+                time.sleep(2 ** attempt)
+    return []
 
 
-def _scopus_search(query: str, api_key: str) -> list[dict]:
-    resp = _scopus_get(
-        "https://api.elsevier.com/content/search/author",
-        params={
-            "query": query,
-            "field": "dc:identifier,preferred-name,affiliation-current",
-            "count": 25,
-            "apiKey": api_key,
-        },
-    )
-    entries = resp.json().get("search-results", {}).get("entry", [])
-    if not entries or "error" in entries[0]:
-        return []
-    return entries
+def _oa_affil_str(entry: dict) -> str:
+    """Extract affiliation string from OpenAlex author entry."""
+    institutions = entry.get("last_known_institutions") or []
+    return " ".join(inst.get("display_name", "") for inst in institutions)
 
 
-def _scopus_fetch_profile(author_id: str, api_key: str) -> dict:
-    resp = _scopus_get(
-        f"https://api.elsevier.com/content/author/author_id/{author_id}",
-        params={"field": "h-index,document-count,affiliation-current", "apiKey": api_key},
-    )
-    return resp.json().get("author-retrieval-response", [{}])[0]
+def _oa_name_matches(first: str, last: str, entry: dict) -> bool:
+    """True if OpenAlex entry display_name matches (first, last)."""
+    display = entry.get("display_name", "")
+    parts = display.split()
+    if not parts:
+        return False
+    oa_last = parts[-1].lower().strip(".,")
+    oa_first = parts[0].lower().strip(".,")
+    if fuzz.ratio(last.lower(), oa_last) < 90:
+        return False
+    if not first or not oa_first:
+        return True
+    return oa_first[0] == first[0].lower()
 
 
 class LiveHIndexProvider(HIndexProvider):
-    _lock = threading.Lock()
-    _last_call = 0.0
 
     def __init__(self, scopus_api_key: str | None = None, discipline: str = "Pediatric Endocrinology"):
-        self._api_key = scopus_api_key
         self._discipline = discipline
 
     def get_hindex(self, name: str, school: str) -> HIndexEvidence:
-        with LiveHIndexProvider._lock:
-            elapsed = time.time() - LiveHIndexProvider._last_call
-            if elapsed < 3.0:
-                time.sleep(3.0 - elapsed)
-            LiveHIndexProvider._last_call = time.time()
-
         now = datetime.now(timezone.utc).isoformat()
-
-        if not self._api_key:
-            return {
-                "h_index": None, "scopus_author_id": None,
-                "source_url": "", "evidence_text": "Scopus API key not set — h-index skipped",
-                "retrieved_at": now,
-            }
-
         try:
             return self._get_hindex_inner(name, school, now)
         except Exception as exc:
-            print(f"      [Scopus] Unrecoverable error for {name}: {exc}")
+            print(f"      [OpenAlex] Unrecoverable error for {name}: {exc}")
             return {
                 "h_index": None, "scopus_author_id": None,
-                "source_url": "", "evidence_text": f"Scopus error: {exc}",
+                "source_url": "", "evidence_text": f"OpenAlex error: {exc}",
                 "retrieved_at": now,
             }
 
-    def _scopus_find_candidate(
+    def _oa_find_candidate(
         self, first: str, last: str, aliases: list[str], middle: str = ""
     ) -> tuple[dict | None, str, str]:
-        """Run Scopus steps 1–3 for (first, last).
+        """Search OpenAlex for (first, last) and return the best matching author.
 
-        Returns (best_entry, confidence, reason):
-          "high"         — affiliation confirmed in search results or via profile fetch
-          "needs_review" — single name match, affiliation not yet verified (caller does step 4)
-          "failed"       — no usable match; reason explains why
+        Returns (entry | None, confidence, reason):
+          "high"         — affiliation confirmed
+          "needs_review" — single name match, affiliation not verified
+          "failed"       — no usable match
         """
-        # Step 1: Search — try with middle initial, fall back to first only
-        entries: list[dict] = []
-        queries = (
-            [f"AUTHLASTNAME({last}) AND AUTHFIRST({first} {middle})"] if middle else []
-        ) + [f"AUTHLASTNAME({last}) AND AUTHFIRST({first})"]
-        for q in queries:
-            print(f"      [Scopus] Querying: {q}")
-            entries = _scopus_search(q, self._api_key)
-            if entries:
-                break
-
+        print(f"      [OpenAlex] Searching: {first} {last}")
+        entries = _openalex_search(first, last)
         if not entries:
-            return None, "failed", f"No Scopus results for '{first} {last}'"
+            return None, "failed", f"No OpenAlex results for '{first} {last}'"
 
-        # Step 2: Filter to name matches
-        name_matches = [e for e in entries if _name_matches(first, last, e)]
+        # Filter: name must match AND author must have at least one publication
+        name_matches = [
+            e for e in entries
+            if _oa_name_matches(first, last, e) and (e.get("works_count") or 0) > 0
+        ]
         if not name_matches:
-            return None, "failed", f"No name match in Scopus for '{first} {last}'"
+            return None, "failed", f"No name match in OpenAlex for '{first} {last}'"
 
-        # Step 3: Pick best candidate
         affil_match = next(
-            (e for e in name_matches if _affil_matches(_scopus_affil_str(e), aliases)),
+            (e for e in name_matches if _affil_matches(_oa_affil_str(e), aliases)),
             None,
         )
         if affil_match:
-            print(f"      [Scopus] Affiliation match in search results")
+            h = (affil_match.get("summary_stats") or {}).get("h_index")
+            w = affil_match.get("works_count", "?")
+            print(f"      [OpenAlex] Affiliation match: '{affil_match.get('display_name','')}' h={h} works={w}")
             return affil_match, "high", ""
 
         if len(name_matches) == 1:
-            pref = name_matches[0].get("preferred-name", {})
-            display = f"{pref.get('given-name', '')} {pref.get('surname', '')}".strip()
-            print(f"      [Scopus] Single name match '{display}' — will verify via profile")
-            return name_matches[0], "needs_review", ""
+            e = name_matches[0]
+            h = (e.get("summary_stats") or {}).get("h_index")
+            w = e.get("works_count", "?")
+            display = e.get("display_name", "")
+            affil = _oa_affil_str(e)
+            print(f"      [OpenAlex] Single match '{display}' @ '{affil}' h={h} works={w} — no affil confirmed")
+            return e, "needs_review", ""
 
-        # Multiple matches — fetch profiles to confirm affiliation
-        for candidate in name_matches:
-            cid = candidate.get("dc:identifier", "").replace("AUTHOR_ID:", "")
-            if not cid:
-                continue
-            try:
-                prof = _scopus_fetch_profile(cid, self._api_key)
-                affil_data = prof.get("author-profile", {}).get("affiliation-current", {})
-                affil_name = ""
-                if isinstance(affil_data, dict):
-                    affil_name = (
-                        (affil_data.get("affiliation", {}) or {})
-                        .get("ip-doc", {})
-                        .get("sort-name", "")
-                    )
-                if _affil_matches(affil_name, aliases):
-                    print(f"      [Scopus] Found affiliation match via profile fetch")
-                    return candidate, "high", ""
-            except Exception:
-                continue
-
-        pref = name_matches[0].get("preferred-name", {})
-        display = f"{pref.get('given-name', '')} {pref.get('surname', '')}".strip()
-        print(f"      [Scopus] Multiple matches for '{last}', no affiliation confirmed. Top: '{display}'")
+        display = name_matches[0].get("display_name", "")
+        print(f"      [OpenAlex] Multiple matches for '{last}', no affiliation confirmed. Top: '{display}'")
         return None, "failed", f"Multiple name matches for '{last}', no affiliation confirmed"
 
     def _get_hindex_inner(self, name: str, school: str, now: str) -> HIndexEvidence:
@@ -1054,18 +1068,17 @@ class LiveHIndexProvider(HIndexProvider):
         xlsx_aliases = _xlsx_aliases_for(school)
         aliases = list(xlsx_aliases) if xlsx_aliases else [school.lower()]
 
-        # Steps 1–3: find Scopus candidate with parsed first name
-        best_entry, confidence, reason = self._scopus_find_candidate(first, last, aliases, middle)
+        best_entry, confidence, reason = self._oa_find_candidate(first, last, aliases, middle)
 
-        # Affiliation gate: if no confirmed match, check for alternate first name
+        # Alternate-name fallback: retry with parenthetical/quoted preferred name
         if confidence == "failed":
             alternate = _extract_alternate_first(name)
             if alternate:
                 print(
-                    f"      [Scopus] Initial match for '{name}' failed affiliation gate; "
+                    f"      [OpenAlex] Initial match for '{name}' failed affiliation gate; "
                     f"retrying with alternate first name '{alternate}'."
                 )
-                best_entry, confidence, alt_reason = self._scopus_find_candidate(alternate, last, aliases)
+                best_entry, confidence, alt_reason = self._oa_find_candidate(alternate, last, aliases)
                 if confidence == "failed":
                     return {
                         "h_index": None, "scopus_author_id": None,
@@ -1084,45 +1097,21 @@ class LiveHIndexProvider(HIndexProvider):
                     "retrieved_at": now,
                 }
 
-        author_id = best_entry.get("dc:identifier", "").replace("AUTHOR_ID:", "")
-        if not author_id:
-            return {
-                "h_index": None, "scopus_author_id": None,
-                "source_url": "", "evidence_text": "Could not extract Scopus author ID",
-                "retrieved_at": now,
-            }
+        oa_id = best_entry.get("id", "")
+        display_name = best_entry.get("display_name", "")
+        display_affil = _oa_affil_str(best_entry)
+        stats = best_entry.get("summary_stats") or {}
+        h_index = stats.get("h_index")
+        works_count = best_entry.get("works_count", "?")
 
-        # Step 4: Fetch full profile for h-index (also has current affiliation)
-        print(f"      [Scopus] Fetching profile for author_id={author_id}")
-        profile_data = _scopus_fetch_profile(author_id, self._api_key)
-        h_index_val  = profile_data.get("h-index")
-        doc_count    = profile_data.get("coredata", {}).get("document-count", "?")
-        h_index      = int(h_index_val) if h_index_val is not None else None
-
-        profile_affil = ""
-        try:
-            affil_data    = profile_data.get("author-profile", {}).get("affiliation-current", {})
-            profile_affil = (
-                (affil_data.get("affiliation", {}) or {}).get("ip-doc", {}).get("sort-name", "")
-            )
-        except Exception:
-            pass
-        display_affil = profile_affil or _scopus_affil_str(best_entry)
-
-        # Upgrade confidence if profile affiliation now matches
-        if confidence == "needs_review" and _affil_matches(profile_affil, aliases):
-            confidence = "high"
-
-        pref    = best_entry.get("preferred-name", {})
-        display = f"{pref.get('given-name', '')} {pref.get('surname', '')}".strip()
-        print(f"      [Scopus] Matched '{display}' @ '{display_affil}' (confidence={confidence}, h-index={h_index})")
+        print(f"      [OpenAlex] Matched '{display_name}' @ '{display_affil}' (confidence={confidence}, h-index={h_index})")
 
         return {
             "h_index": h_index,
-            "scopus_author_id": author_id,
-            "source_url": f"https://www.scopus.com/authid/detail.uri?authorId={author_id}",
+            "scopus_author_id": None,
+            "source_url": oa_id,
             "evidence_text": (
-                f"Scopus: h-index={h_index}, documents={doc_count}, "
+                f"OpenAlex: h-index={h_index}, works={works_count}, "
                 f"affil='{display_affil}', confidence={confidence}"
             ),
             "retrieved_at": now,
