@@ -341,7 +341,7 @@ def agent2_enrich(
     if roles_provider is None:
         roles_provider = LiveRolesProvider(client)
     if hindex_provider is None:
-        hindex_provider = LiveHIndexProvider()
+        hindex_provider = LiveHIndexProvider(discipline=discipline)
 
     t0 = time.time()
     name = faculty.get("full_name", "Unknown")
@@ -832,16 +832,21 @@ def run_pipeline(schools=None, discipline=None, on_enriched=None, on_qc_complete
 
     final = run_pipeline_from_records(deduped, on_enriched=on_enriched, on_qc_complete=on_qc_complete, roles_provider=_roles_provider, discipline=_discipline, considerations="")
 
-    # Flatten nested qc dict into top-level columns for the CSV
+    # Flatten nested qc dict into 3 consolidated CSV columns: each is
+    # "<confidence> — <why>", with the roles column listing every role + link + why.
+    def _compose(conf: str, note: str) -> str:
+        return f"{conf} — {note}" if note else (conf or "")
+
+    _ROLE_CATS = ("editorial", "society", "leadership", "training")
     for record in final:
         qc = record.get("qc") or {}
-        record["qc_overall"]               = qc.get("overall", "")
-        record["qc_nih_confidence"]        = qc.get("nih_confidence", "")
-        record["qc_hindex_confidence"]     = qc.get("hindex_confidence", "")
-        record["qc_editorial_confidence"]  = qc.get("editorial_confidence", "")
-        record["qc_society_confidence"]    = qc.get("society_confidence", "")
-        record["qc_leadership_confidence"] = qc.get("leadership_confidence", "")
-        record["qc_training_confidence"]   = qc.get("training_confidence", "")
+        record["qc_nih"]    = _compose(qc.get("nih_confidence", ""), qc.get("nih_note", ""))
+        record["qc_hindex"] = _compose(qc.get("hindex_confidence", ""), qc.get("hindex_note", ""))
+        roles_conf = qc.get("overall", "")  # worst across role categories already folded into overall
+        # roles-only worst (exclude nih/hindex) for an accurate roles header
+        roles_only = [qc.get(f"{c}_confidence", "green") for c in _ROLE_CATS]
+        roles_conf = "red" if "red" in roles_only else ("yellow" if "yellow" in roles_only else "green")
+        record["qc_roles"] = _compose(roles_conf, qc.get("roles_summary", ""))
 
     df = pd.DataFrame(final)
     df["nih_project_nums"] = df["nih_project_nums"].fillna("")
@@ -903,7 +908,7 @@ def run_pipeline(schools=None, discipline=None, on_enriched=None, on_qc_complete
     print(f"   Cache hit (NIH):   {m['cache_hit_rate_nih']:.0%}")
     print(f"   Cache hit (roles): {m['cache_hit_rate_roles']:.0%}")
 
-    summary_cols = ["full_name", "school", "title", "h_index", "nih_grant_count", "qc_overall", "qc_nih_confidence", "qc_hindex_confidence", "qc_editorial_confidence", "qc_society_confidence", "qc_leadership_confidence", "qc_training_confidence"]
+    summary_cols = ["full_name", "school", "title", "h_index", "nih_grant_count", "qc_nih", "qc_hindex", "qc_roles"]
     available = [c for c in summary_cols if c in df.columns]
     print("\n--- PREVIEW (first 10 rows) ---")
     print(df[available].head(10).to_string(index=False))

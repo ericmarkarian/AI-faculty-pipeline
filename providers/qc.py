@@ -19,8 +19,14 @@ NIH confidence:
   medium — grants found but institution unconfirmed (needs human review)
 
 H-index confidence:
-  high   — h-index found on Scopus
-  medium — not found (manual lookup may be needed)
+  green  — h-index found (Scopus or OpenAlex fallback)
+  yellow — not found, OR inconsistent with NIH grants (see below)
+
+NIH ↔ h-index consistency:
+  A PI with many NIH grants should have a non-trivial h-index. Many grants
+  alongside a near-zero h-index signals a mismatched record (wrong author matched
+  for the h-index, or wrong PI for the grants) → folded into the h-index signal as
+  yellow. The reverse (high h-index, few grants) is legitimate and never flagged.
 """
 
 import re
@@ -189,14 +195,79 @@ def _worst(statuses: list[str]) -> str:
     return "green"
 
 
-def _nih_confidence(faculty: dict) -> str:
+def _nih_confidence(faculty: dict) -> tuple[str, str]:
     if faculty.get("nih_grant_count") and faculty.get("nih_institution_unconfirmed"):
-        return "yellow"
-    return "green"
+        return "yellow", "grants found but institution unconfirmed (possible wrong-person match)"
+    return "green", ""
 
 
-def _hindex_confidence(faculty: dict) -> str:
-    return "green" if faculty.get("h_index") is not None else "yellow"
+def _hindex_confidence(faculty: dict) -> tuple[str, str]:
+    if faculty.get("h_index") is not None:
+        return "green", ""
+    return "yellow", "h-index not found (manual lookup may be needed)"
+
+
+# NIH-grants ↔ h-index consistency check.
+# A PI with substantial NIH funding publishes and gets cited, so a near-zero
+# h-index alongside many grants signals a mismatched record (usually the wrong
+# author was matched for the h-index, or the wrong PI for the grants).
+_CONSISTENCY_MIN_GRANTS = 6    # below this, too little signal to judge
+_CONSISTENCY_H_DIVISOR  = 4    # expected h-index floor ≈ grants / divisor
+_CONSISTENCY_H_CAP      = 10   # never expect more than this (avoid penalising real high h-index)
+
+
+def _consistency_confidence(faculty: dict) -> tuple[str, str]:
+    """Flag when NIH grant count and h-index are wildly inconsistent.
+
+    One-directional: many grants + tiny h-index is a contradiction; the reverse
+    (high h-index, few/no grants) is common and legitimate (foundation/industry/
+    international funding), so it is never flagged.
+
+    Returns (confidence, note).
+    """
+    grants = faculty.get("nih_grant_count") or 0
+    h = faculty.get("h_index")
+    if h is None or grants < _CONSISTENCY_MIN_GRANTS:
+        return "green", ""
+    expected_floor = min(grants // _CONSISTENCY_H_DIVISOR, _CONSISTENCY_H_CAP)
+    if h < expected_floor:
+        return "yellow", (
+            f"{grants} NIH grants but h-index is only {h} "
+            f"(expected ≥ {expected_floor}) — likely a mismatched h-index or NIH record"
+        )
+    return "green", ""
+
+
+def _role_reason(detail: dict) -> str:
+    """Human-readable explanation of a single role's QC status."""
+    if detail["status"] == "green":
+        return "verified"
+    reasons: list[str] = []
+    if not (detail.get("evidence_snippet") or "").strip():
+        reasons.append("no evidence text")
+    if detail.get("url_alive") is True and not detail.get("name_on_page"):
+        reasons.append("wrong page — name not found on source")
+    elif detail.get("url_alive") is False:
+        reasons.append("source URL dead")
+    elif detail.get("url_alive") is None and detail.get("source_url"):
+        reasons.append("source URL unverified")
+    if not detail.get("role_on_page"):
+        reasons.append("role text not found in evidence")
+    if detail.get("negation_detected"):
+        reasons.append("appears former/past")
+    return "; ".join(reasons) or "unverified"
+
+
+def _format_roles_summary(role_details: list[dict]) -> str:
+    """One readable block listing each role with its link and why it passed/failed."""
+    lines: list[str] = []
+    for d in role_details:
+        url = d.get("source_url") or "(no url)"
+        lines.append(
+            f"[{d['status']}] {d.get('category','')}: "
+            f"{d.get('role','')} @ {d.get('org','')} — {url} ({_role_reason(d)})"
+        )
+    return "\n".join(lines)
 
 
 def verify_faculty_roles(faculty: dict, client=None) -> dict:
@@ -217,8 +288,23 @@ def verify_faculty_roles(faculty: dict, client=None) -> dict:
     """
     name = faculty.get("full_name", "Unknown")
 
-    nih_conf    = _nih_confidence(faculty)
-    hindex_conf = _hindex_confidence(faculty)
+    nih_conf, nih_note       = _nih_confidence(faculty)
+    hindex_conf, hindex_note = _hindex_confidence(faculty)
+    cons_conf, cons_note     = _consistency_confidence(faculty)
+
+    # The grants↔h-index contradiction is surfaced through the h-index signal,
+    # since the h-index is the value most likely to be wrong.
+    hindex_eff = _worst([hindex_conf, cons_conf])
+    hindex_eff_note = "; ".join(n for n in (hindex_note, cons_note) if n)
+
+    base_signals = {
+        "nih_confidence": nih_conf,
+        "nih_note": nih_note,
+        "hindex_confidence": hindex_eff,
+        "hindex_note": hindex_eff_note,
+        "consistency_confidence": cons_conf,
+        "consistency_note": cons_note,
+    }
 
     all_roles: list[dict] = []
     for cat in ROLE_CATEGORIES:
@@ -228,10 +314,10 @@ def verify_faculty_roles(faculty: dict, client=None) -> dict:
 
     if not all_roles:
         empty = {f"{cat}_confidence": "green" for cat in ROLE_CATEGORIES}
-        overall = _worst([nih_conf, hindex_conf])
-        print(f"    [QC] {name} — no roles | NIH: {nih_conf} | H-index: {hindex_conf} | OVERALL: {overall.upper()}")
-        return {"overall": overall, "nih_confidence": nih_conf, "hindex_confidence": hindex_conf,
-                "role_details": [], **empty}
+        overall = _worst([nih_conf, hindex_eff])
+        print(f"    [QC] {name} — no roles | NIH: {nih_conf} | H-index: {hindex_eff} | OVERALL: {overall.upper()}")
+        return {"overall": overall, **base_signals,
+                "role_details": [], "roles_summary": "", **empty}
 
     print(f"    [QC] {name} — checking {len(all_roles)} role(s) (URL + evidence)")
 
@@ -288,18 +374,19 @@ def verify_faculty_roles(faculty: dict, client=None) -> dict:
         f"{cat}_confidence": _worst(category_statuses[cat]) if category_statuses[cat] else "green"
         for cat in ROLE_CATEGORIES
     }
-    overall = _worst([*cat_confidences.values(), nih_conf, hindex_conf])
+    overall = _worst([*cat_confidences.values(), nih_conf, hindex_eff])
 
+    cons_label = f" | Consistency: {cons_conf}" if cons_conf != "green" else ""
     print(
         f"    [QC] {name} summary — "
         + " | ".join(f"{cat}: {cat_confidences[f'{cat}_confidence']}" for cat in ROLE_CATEGORIES)
-        + f" | NIH: {nih_conf} | H-index: {hindex_conf} | OVERALL: {overall.upper()}"
+        + f" | NIH: {nih_conf} | H-index: {hindex_eff}{cons_label} | OVERALL: {overall.upper()}"
     )
 
     return {
         "overall": overall,
-        "nih_confidence": nih_conf,
-        "hindex_confidence": hindex_conf,
+        **base_signals,
         **cat_confidences,
         "role_details": role_details,
+        "roles_summary": _format_roles_summary(role_details),
     }
