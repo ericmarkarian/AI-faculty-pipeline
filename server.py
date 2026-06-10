@@ -1,5 +1,5 @@
 """
-Flask SSE server for the Faculty Intelligence pipeline.
+Flask SSE server for Faculty Scout.
 
 Usage:
     python3 server.py
@@ -126,18 +126,14 @@ def require_auth():
         return Response(
             "Access denied.",
             401,
-            {"WWW-Authenticate": 'Basic realm="Faculty Pipeline"'},
+            {"WWW-Authenticate": 'Basic realm="Faculty Scout"'},
         )
 
 
 @app.route("/")
 def index():
-    manual_only = os.environ.get("MANUAL_ONLY", "").lower() in ("1", "true", "yes")
     with open("medfaculty.html", "r") as f:
         html = f.read()
-    if manual_only:
-        html = html.replace("<head>", "<head><script>window.MANUAL_ONLY=true;</script>", 1)
-    from flask import Response
     resp = Response(html, mimetype="text/html")
     resp.headers["Cache-Control"] = "no-store, no-cache, must-revalidate"
     return resp

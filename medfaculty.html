@@ -3,46 +3,53 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-<title>Faculty Intelligence</title>
+<title>Faculty Scout</title>
 <link rel="preconnect" href="https://fonts.googleapis.com" />
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-<link href="https://fonts.googleapis.com/css2?family=Spectral:ital,wght@0,400;0,600;1,400;1,600&family=Figtree:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+<link href="https://fonts.googleapis.com/css2?family=Spectral:ital,wght@0,400;0,500;0,600;0,700;1,400;1,600&family=Source+Sans+3:wght@400;500;600;700&display=swap" rel="stylesheet" />
 <script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.2/babel.min.js"></script>
 <style>
   :root {
-    --red:        oklch(50% 0.26 27);
-    --red-hover:  oklch(44% 0.24 25);
-    --red-dim:    oklch(60% 0.20 27);
-    --red-bg:     oklch(97% 0.030 25);
-    --red-bg2:    oklch(92% 0.075 25);
-    --red-text:   oklch(38% 0.22 25);
+    /* Accent — Stanford cardinal, used sparingly (deep, muted brick red) */
+    --red:        #8C1515;
+    --red-hover:  #6E1010;
+    --red-dim:    #A6433F;
+    --red-bg:     #F7F0EE;
+    --red-bg2:    #EAD7D4;
+    --red-text:   #6E1010;
 
-    --bg:         oklch(98.5% 0.004 25);
-    --surface:    oklch(97%   0.006 25);
-    --surface2:   oklch(94%   0.012 25);
-    --border:     oklch(86%   0.014 25);
-    --border-sub: oklch(92%   0.008 25);
+    /* Neutrals — warm Stanford 'fog'/sandstone tones */
+    --bg:         #FAF9F5;
+    --surface:    #F3F1EA;
+    --surface2:   #E8E5DA;
+    --border:     #D9D4C7;
+    --border-sub: #E7E3D8;
 
-    --ink:        oklch(16%   0.022 25);
-    --ink2:       oklch(42%   0.016 25);
-    --ink3:       oklch(63%   0.010 25);
+    /* Text — warm near-black + stone greys */
+    --ink:        #2E2D29;
+    --ink2:       #54524B;
+    --ink3:       #817C70;
 
-    --qg-bg:      oklch(95%  0.055 145); --qg-bd: oklch(76% 0.12 145); --qg-tx: oklch(29% 0.14 145);
-    --qy-bg:      oklch(96%  0.065  82); --qy-bd: oklch(78% 0.14  82); --qy-tx: oklch(36% 0.14  65);
-    --qr-bg:      oklch(96%  0.042  20); --qr-bd: oklch(76% 0.12  20); --qr-tx: oklch(36% 0.14  20);
+    --qg-bg:      oklch(95%  0.055 145); --qg-bd: oklch(72% 0.13 145); --qg-tx: oklch(40% 0.15 150);
+    --qy-bg:      oklch(96%  0.070  85); --qy-bd: oklch(74% 0.15  82); --qy-tx: oklch(47% 0.13  70);
+    --qr-bg:      oklch(96%  0.042  22); --qr-bd: oklch(74% 0.13  24); --qr-tx: oklch(47% 0.18  25);
   }
 
   *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
   body {
-    font-family: 'Figtree', system-ui, sans-serif;
+    font-family: 'Source Sans 3', system-ui, sans-serif;
     background: var(--bg);
     color: var(--ink);
+    font-size: 14.5px;
+    line-height: 1.55;
+    letter-spacing: 0;
     -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
   }
-  input, select, button, textarea { font-family: 'Figtree', system-ui, sans-serif; -webkit-font-smoothing: antialiased; }
+  input, select, button, textarea { font-family: 'Source Sans 3', system-ui, sans-serif; -webkit-font-smoothing: antialiased; }
 
   ::-webkit-scrollbar { width: 4px; height: 4px; }
   ::-webkit-scrollbar-track { background: transparent; }
@@ -52,9 +59,32 @@
   @keyframes dropIn  { from { opacity:0; transform:translateY(-6px) scale(0.97); } to { opacity:1; transform:none; } }
   @keyframes zoomIn  { from { opacity:0; transform:scale(0.88) translateY(16px); } to { opacity:1; transform:none; } }
   @keyframes spin    { to { transform:rotate(360deg); } }
-  @keyframes float   { 0%,100% { transform:translateY(0); } 50% { transform:translateY(-7px); } }
-  @keyframes glow    { 0%,100% { box-shadow:0 2px 16px oklch(50% 0.26 27 / 0.32); } 50% { box-shadow:0 4px 28px oklch(50% 0.26 27 / 0.55); } }
+  /* float + glow intentionally neutralized — the editorial look avoids bobbing/glowing */
+  @keyframes float   { 0%,100% { transform:none; } }
+  @keyframes glow    { 0%,100% { box-shadow:none; } }
   @keyframes pulse   { 0%,100% { opacity:1; } 50% { opacity:0.45; } }
+
+  /* ── Intro animation: hero "Faculty Scout" shrinks & flies to the top-left ── */
+  @keyframes appReveal { from { opacity:0; transform:translateY(8px); } to { opacity:1; transform:none; } }
+  @keyframes introOverlayOut { 0%,72% { opacity:1; } 100% { opacity:0; } }
+  @keyframes introTitleMove {
+    0%   { transform: scale(0.92); opacity:0; }     /* enter */
+    7%   { transform: scale(1);    opacity:1; }
+    13%  { transform: scale(1.03); opacity:1; }     /* gentle breathe */
+    20%  { transform: scale(1);    opacity:1; }
+    58%  { transform: scale(1);    opacity:1; }     /* hold big in center */
+    100% { transform: translate(calc(-50vw + 122px), calc(-50vh + 28px)) scale(0.30); opacity:0; }  /* fly to top-left */
+  }
+  @keyframes introTagOut {
+    0%   { opacity:0; transform:translateY(6px); }
+    10%  { opacity:1; transform:none; }
+    42%  { opacity:1; }
+    54%  { opacity:0; transform:translateY(-4px); }
+    100% { opacity:0; }
+  }
+  .intro-overlay { animation: introOverlayOut 2.8s ease forwards; }
+  .intro-title   { animation: introTitleMove 2.6s cubic-bezier(0.6,0,0.2,1) forwards; transform-origin:center; will-change:transform,opacity; }
+  .intro-tag     { animation: introTagOut 2.6s ease forwards; }
 
   .tr-hover:hover td { background: var(--red-bg) !important; cursor: pointer; }
   .tr-hover:hover .name-cell { color: var(--red) !important; text-decoration: underline; text-underline-offset: 3px; }
@@ -1142,9 +1172,24 @@ const NlFacultyRow = React.memo(function NlFacultyRow({faculty:f,isNew,onRowClic
 
 /* ── App ── */
 function App() {
+  /* ── Intro animation (hero "Faculty Scout" → shrinks to top-left logo) ── */
+  const [intro,setIntro] = useState(()=>{
+    try {
+      if (window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches) return false;
+    } catch(e){}
+    return true;
+  });
+  useEffect(()=>{
+    if(!intro) return;
+    const t = setTimeout(()=>setIntro(false), 2900);
+    return ()=>clearTimeout(t);
+  // eslint-disable-next-line
+  },[]);
+
   /* ── Tab state ── */
-  const manualOnly = typeof window!=='undefined' && window.MANUAL_ONLY;
-  const [activeTab,setActiveTab] = useState(manualOnly?'lookup':'search');
+  // Both lookup modes are always shown. (Previously gated behind a manual-only env flag.)
+  const manualOnly = false;
+  const [activeTab,setActiveTab] = useState('search');
 
   /* ── School Search tab state ── */
   const [selected,setSelected]       = useState([]);
@@ -1171,7 +1216,7 @@ function App() {
 
   /* ── Name Lookup tab state ── */
   const [nlSpecialty,setNlSpecialty]   = useState('');
-  const [nlInputMode,setNlInputMode]   = useState('csv');
+  const [nlInputMode,setNlInputMode]   = useState('manual');
   const [nlParsed,setNlParsed]         = useState([]);
   const [nlParseError,setNlParseError] = useState('');
   const [nlRawText,setNlRawText]       = useState('');
@@ -1366,14 +1411,30 @@ function App() {
       {search:nlTableSearch,minH:nlMinH,minGrants:nlMinGrants,rankFilter:nlRankFilter,mdOnly:nlMdOnly,sortCol:nlSortCol,sortDir:nlSortDir,loading:nlLoading}),
     [nlTick,nlLoading,nlTableSearch,nlMinH,nlMinGrants,nlRankFilter,nlMdOnly,nlSortCol,nlSortDir]);
 
+  // Build the 3 consolidated QC columns ("confidence — why") from a faculty qc dict.
+  const qcColumns=(qc)=>{
+    if(!qc||!Object.keys(qc).length) return ['','',''];
+    const compose=(conf,note)=>conf?(note?`${conf} — ${note}`:conf):'';
+    const cs=['editorial','society','leadership','training'].map(k=>qc[k+'_confidence']).filter(Boolean);
+    const rolesWorst=cs.includes('red')?'red':cs.includes('yellow')?'yellow':(cs.length?'green':'');
+    let rolesWhy=qc.roles_summary||'';
+    if(!rolesWhy && qc.role_details){
+      rolesWhy=(qc.role_details||[]).map(d=>{
+        const reason=d.status==='green'?'verified':[
+          (!(d.evidence_snippet||'').trim()?'no evidence text':null),
+          (d.url_alive===true&&!d.name_on_page?'wrong page — name not found':null),
+          (d.url_alive===false?'source URL dead':null),
+          (!d.role_on_page?'role text not found':null),
+          (d.negation_detected?'appears former/past':null),
+        ].filter(Boolean).join('; ')||'unverified';
+        return `[${d.status}] ${d.category||''}: ${d.role||''} @ ${d.org||''} — ${d.source_url||'(no url)'} (${reason})`;
+      }).join('\n');
+    }
+    return [compose(qc.nih_confidence,qc.nih_note), compose(qc.hindex_confidence,qc.hindex_note), rolesWhy?compose(rolesWorst,rolesWhy):rolesWorst];
+  };
+
   const exportCSV=()=>{
-    const hdr=['Name','School','State','Title','Email','H-Index','NIH Grants','NIH Grant Titles','Leadership','Academic Editorial Roles','Societies','Educational Leadership Roles','QC Overall','QC NIH','QC H-Index','QC Editorial','QC Society','QC Leadership','QC Training','QC Role Details','Education/Training History','Profile URL'];
-    const fmtQcDetails=details=>(details||[]).map(d=>{
-      const url=d.url_alive===true?'url=alive':d.url_alive===false?'url=dead':'url=unknown';
-      const nm=d.name_on_page?'name=✓':'name=✗';
-      const rl=d.role_on_page?'role=✓':'role=✗';
-      return`[${(d.status||'').toUpperCase()}] ${d.category}: "${d.role||''}" @ "${d.org||''}" | ${url} ${nm} ${rl}${d.source_url?' | '+d.source_url:''}`;
-    }).join('\n');
+    const hdr=['Name','School','State','Title','Email','H-Index','NIH Grants','NIH Grant Titles','Leadership','Academic Editorial Roles','Societies','Educational Leadership Roles','QC — NIH','QC — H-Index','QC — Roles','Education/Training History','Profile URL'];
     const fmtEducation=edu=>(edu||[]).map(e=>{
       const parts=[e.type,e.institution,e.specialty].filter(Boolean).join(', ');
       return e.year?`${parts} (${e.year})`:parts;
@@ -1383,11 +1444,10 @@ function App() {
       const fmt=arr=>(arr||[]).map(r=>[r.role,r.org].filter(Boolean).join(' @ ')).filter(Boolean).join('; ');
       const gt=[...new Set((f.nih_grant_titles||'').split('|').map(s=>s.trim()).filter(Boolean))].join('; ');
       const qc=f.qc||{};
+      const [qcNih,qcHindex,qcRoles]=qcColumns(qc);
       return[f.full_name,f.school,meta.state||'',f.title||'',f.email||'',f.h_index??'',f.nih_grant_count||0,gt,
         fmt(f.leadership_roles),fmt(f.editorial_roles),fmt(f.society_roles),fmt(f.training_roles),
-        qc.overall||'',qc.nih_confidence||'',qc.hindex_confidence||'',
-        qc.editorial_confidence||'',qc.society_confidence||'',qc.leadership_confidence||'',qc.training_confidence||'',
-        fmtQcDetails(qc.role_details),
+        qcNih,qcHindex,qcRoles,
         fmtEducation(f.education),
         f.profile_url||''];
     });
@@ -1399,13 +1459,7 @@ function App() {
   };
 
   const nlExportCSV=()=>{
-    const hdr=['Name','Institution','Title','Email','H-Index','NIH Grants','NIH Grant Titles','Leadership','Academic Editorial Roles','Societies','Educational Leadership Roles','QC Overall','QC NIH','QC H-Index','QC Editorial','QC Society','QC Leadership','QC Training','QC Role Details','Education/Training History','Profile URL'];
-    const fmtQcDetails=details=>(details||[]).map(d=>{
-      const url=d.url_alive===true?'url=alive':d.url_alive===false?'url=dead':'url=unknown';
-      const nm=d.name_on_page?'name=✓':'name=✗';
-      const rl=d.role_on_page?'role=✓':'role=✗';
-      return`[${(d.status||'').toUpperCase()}] ${d.category}: "${d.role||''}" @ "${d.org||''}" | ${url} ${nm} ${rl}${d.source_url?' | '+d.source_url:''}`;
-    }).join('\n');
+    const hdr=['Name','Institution','Title','Email','H-Index','NIH Grants','NIH Grant Titles','Leadership','Academic Editorial Roles','Societies','Educational Leadership Roles','QC — NIH','QC — H-Index','QC — Roles','Education/Training History','Profile URL'];
     const fmtEducation=edu=>(edu||[]).map(e=>{
       const parts=[e.type,e.institution,e.specialty].filter(Boolean).join(', ');
       return e.year?`${parts} (${e.year})`:parts;
@@ -1414,11 +1468,10 @@ function App() {
       const fmt=arr=>(arr||[]).map(r=>[r.role,r.org].filter(Boolean).join(' @ ')).filter(Boolean).join('; ');
       const gt=[...new Set((f.nih_grant_titles||'').split('|').map(s=>s.trim()).filter(Boolean))].join('; ');
       const qc=f.qc||{};
+      const [qcNih,qcHindex,qcRoles]=qcColumns(qc);
       return[f.full_name,f.school,f.title||'',f.email||'',f.h_index??'',f.nih_grant_count||0,gt,
         fmt(f.leadership_roles),fmt(f.editorial_roles),fmt(f.society_roles),fmt(f.training_roles),
-        qc.overall||'',qc.nih_confidence||'',qc.hindex_confidence||'',
-        qc.editorial_confidence||'',qc.society_confidence||'',qc.leadership_confidence||'',qc.training_confidence||'',
-        fmtQcDetails(qc.role_details),
+        qcNih,qcHindex,qcRoles,
         fmtEducation(f.education),
         f.profile_url||''];
     });
@@ -1465,19 +1518,34 @@ function App() {
   );
 
   return (
-    <div style={{minHeight:'100vh',background:'var(--bg)',display:'flex',flexDirection:'column'}}>
+    <React.Fragment>
+      {intro&&(
+        <div className="intro-overlay" style={{position:'fixed',inset:0,zIndex:9999,background:'var(--bg)',
+          display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',pointerEvents:'none'}}>
+          <div className="intro-title" style={{fontFamily:"'Spectral',serif",fontWeight:600,
+            fontSize:'clamp(40px,7.5vw,76px)',letterSpacing:'-0.025em',color:'var(--red)',lineHeight:1}}>
+            Faculty Scout
+          </div>
+          <div className="intro-tag" style={{fontFamily:"'Spectral',serif",fontStyle:'italic',
+            fontSize:'clamp(14px,1.5vw,18px)',color:'var(--ink3)',marginTop:14,letterSpacing:'0.01em'}}>
+            Academic faculty intelligence
+          </div>
+        </div>
+      )}
+    <div style={{minHeight:'100vh',background:'var(--bg)',display:'flex',flexDirection:'column',
+      animation:intro?'appReveal 0.8s 1.85s both':'none'}}>
       {detailFaculty&&<FacultyDetail faculty={detailFaculty} onClose={()=>setDetail(null)} onOpenQc={()=>setQcModal(detailFaculty)}/>}
       {qcModal&&<QcModal faculty={qcModal} onClose={()=>setQcModal(null)}/>}
       {nlDetail&&<FacultyDetail faculty={nlDetail} onClose={()=>setNlDetail(null)} onOpenQc={()=>setNlQcModal(nlDetail)}/>}
       {nlQcModal&&<QcModal faculty={nlQcModal} onClose={()=>setNlQcModal(null)}/>}
 
-      {/* Topbar */}
-      <div style={{background:'#fff',borderBottom:'1px solid var(--border-sub)',padding:'0 36px',flexShrink:0}}>
-        <div style={{maxWidth:1440,margin:'0 auto',height:48,display:'flex',alignItems:'center',justifyContent:'space-between'}}>
-          <span style={{fontFamily:"'Spectral',serif",fontSize:18,fontWeight:600,letterSpacing:'-0.01em',color:'var(--ink)'}}>Faculty Intelligence</span>
+      {/* Topbar — cardinal masthead */}
+      <div style={{background:'var(--red)',padding:'0 36px',flexShrink:0}}>
+        <div style={{maxWidth:1440,margin:'0 auto',height:54,display:'flex',alignItems:'center',justifyContent:'space-between'}}>
+          <span style={{fontFamily:"'Spectral',serif",fontSize:20,fontWeight:600,letterSpacing:'0',color:'#fff'}}>Faculty Scout</span>
           <div style={{display:'flex',alignItems:'center',gap:8}}>
-            <span style={{width:6,height:6,borderRadius:'50%',flexShrink:0,background:(loading||nlLoading)?'oklch(72% 0.15 80)':'var(--qg-tx)',animation:(loading||nlLoading)?'pulse 1.4s ease-in-out infinite':'none',transition:'background 0.4s'}}/>
-            <span style={{fontSize:11,color:'var(--ink3)'}}>
+            <span style={{width:6,height:6,borderRadius:'50%',flexShrink:0,background:(loading||nlLoading)?'#FEDD5C':'rgba(255,255,255,0.85)',animation:(loading||nlLoading)?'pulse 1.4s ease-in-out infinite':'none',transition:'background 0.4s'}}/>
+            <span style={{fontSize:11,color:'rgba(255,255,255,0.85)',letterSpacing:'0.02em'}}>
               {activeTab==='search'
                 ?(loading?`${resultsMapRef.current.size} enriched…`:ran?`${displayed.length} of ${resultsMapRef.current.size} shown`:'NIH Reporter · Scopus · LCME · AOA')
                 :(nlLoading?`${nlResultsMapRef.current.size} enriched…`:nlRan?`${nlDisplayed.length} of ${nlResultsMapRef.current.size} shown`:'NIH Reporter · Scopus · LCME · AOA')
@@ -1506,16 +1574,32 @@ function App() {
         </div>
       </div>
 
+      {/* Per-tab description — editorial standfirst */}
+      <div style={{background:'var(--bg)',borderBottom:'1px solid var(--border-sub)',flexShrink:0}}>
+        <div style={{maxWidth:1440,margin:'0 auto',padding:'20px 36px'}}>
+          <div style={{borderLeft:'2px solid var(--red)',paddingLeft:18,maxWidth:780}}>
+            <div style={{fontFamily:"'Spectral',serif",fontSize:18,fontWeight:600,color:'var(--ink)',letterSpacing:'-0.01em',marginBottom:4}}>
+              {activeTab==='search'?'Sweep a whole specialty':'Look up specific people'}
+            </div>
+            <div style={{fontSize:14,color:'var(--ink2)',lineHeight:1.6}}>
+              {activeTab==='search'
+                ? <span>Pick one or more institutions and a specialty — Faculty Scout pulls the full faculty roster from each school's directory and enriches everyone with h-index, NIH grants, leadership &amp; editorial roles, and training history.</span>
+                : <span>Already have names in mind? Type them in (or upload a CSV) with each person's institution, and Faculty Scout enriches just those individuals with the same data.</span>}
+            </div>
+          </div>
+        </div>
+      </div>
+
       {/* Body */}
-      <div style={{flex:1,width:'100%',padding:'28px 40px 48px'}}>
+      <div style={{flex:1,width:'100%',maxWidth:1440,margin:'0 auto',padding:'34px 36px 56px'}}>
 
         {/* ── SCHOOL SEARCH TAB ── */}
         {activeTab==='search'&&(<>
-        <div style={{display:'flex',justifyContent:hasRun?'flex-start':'center',gap:24,alignItems:'flex-start'}}>
+        <div style={{display:'flex',justifyContent:'flex-start',gap:44,alignItems:'flex-start'}}>
 
           {/* Sidebar */}
-          <div style={{flexShrink:0,width:hasRun?238:510,transition:'width 0.55s cubic-bezier(0.16,1,0.3,1)'}}>
-            <div style={{position:'sticky',top:24,width:hasRun?238:510,transition:'width 0.55s cubic-bezier(0.16,1,0.3,1)'}}>
+          <div style={{flexShrink:0,width:hasRun?238:392,transition:'width 0.55s cubic-bezier(0.16,1,0.3,1)'}}>
+            <div style={{position:'sticky',top:24,width:hasRun?238:392,transition:'width 0.55s cubic-bezier(0.16,1,0.3,1)'}}>
 
               <SLabel>Program type</SLabel>
               <Pills value={typeFilter} onChange={v=>{setTypeFilter(v);setSelected([]);}}
@@ -1700,26 +1784,34 @@ function App() {
               </div>
             </div>
           )}
-        </div>
 
-        {/* Empty state — search tab */}
-        {!hasRun&&(
-          <div style={{textAlign:'center',marginTop:52,animation:'fadeUp 0.5s 0.1s ease both'}}>
-            <div style={{animation:'float 4s ease-in-out infinite'}}>
-              <div style={{fontFamily:"'Spectral',serif",fontStyle:'italic',fontSize:28,color:'var(--ink3)',letterSpacing:'-0.01em',marginBottom:10}}>
-                Ready when you are
-              </div>
-              <div style={{fontSize:13,color:'var(--ink3)',lineHeight:1.7}}>
-                Configure your search above, then run the pipeline.
-              </div>
-              <div style={{fontSize:12,color:'var(--ink3)',marginTop:6,opacity:0.6}}>
-                Make sure{' '}
-                <code style={{background:'var(--surface)',padding:'1px 6px',borderRadius:3,fontFamily:'monospace',fontSize:11}}>server.py</code>
-                {' '}is running.
+          {/* How it works — just the steps */}
+          {!hasRun&&(
+            <div style={{flex:1,minWidth:0,paddingTop:6,animation:'fadeUp 0.5s 0.1s ease both'}}>
+              <div style={{maxWidth:560}}>
+                <div style={{fontSize:11,fontWeight:700,letterSpacing:'0.08em',textTransform:'uppercase',color:'var(--ink3)',marginBottom:6}}>How it works</div>
+                <div style={{display:'flex',flexDirection:'column',gap:0,borderTop:'1px solid var(--border)'}}>
+                  {[
+                    ['Choose institutions','Select one or more schools or hospitals on the left.'],
+                    ['Pick a specialty','Add optional guidance — journals or societies to prioritize.'],
+                    ['Run the search','Results stream in live — filter, sort, and export to CSV.'],
+                  ].map(([t,d],i)=>(
+                    <div key={t} style={{display:'flex',gap:18,alignItems:'baseline',padding:'18px 2px',borderBottom:'1px solid var(--border)'}}>
+                      <span style={{flexShrink:0,fontFamily:"'Spectral',serif",fontSize:24,fontWeight:600,color:'var(--red)',width:26,lineHeight:1}}>{i+1}</span>
+                      <div>
+                        <div style={{fontSize:15.5,fontWeight:600,color:'var(--ink)',marginBottom:3}}>{t}</div>
+                        <div style={{fontSize:14,color:'var(--ink2)',lineHeight:1.55}}>{d}</div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+                <div style={{fontSize:12.5,color:'var(--ink3)',marginTop:16,fontStyle:'italic',fontFamily:"'Spectral',serif"}}>
+                  A full specialty across several schools can take a few minutes.
+                </div>
               </div>
             </div>
-          </div>
-        )}
+          )}
+        </div>
         </>)}
 
         {/* ── NAME LOOKUP TAB ── */}
@@ -1727,19 +1819,19 @@ function App() {
           const nlHasRun=nlLoading||nlResultsMapRef.current.size>0||nlRan;
           const nlCanRun=nlParsed.length>0&&!nlParseError&&!nlLoading;
           return (
-            <div style={{display:'flex',justifyContent:nlHasRun?'flex-start':'center',gap:24,alignItems:'flex-start'}}>
+            <div style={{display:'flex',justifyContent:'flex-start',gap:44,alignItems:'flex-start'}}>
 
               {/* Lookup sidebar */}
-              <div style={{flexShrink:0,width:nlHasRun?260:480,transition:'width 0.55s cubic-bezier(0.16,1,0.3,1)'}}>
-                <div style={{position:'sticky',top:24,width:nlHasRun?260:480,transition:'width 0.55s cubic-bezier(0.16,1,0.3,1)'}}>
+              <div style={{flexShrink:0,width:nlHasRun?260:392,transition:'width 0.55s cubic-bezier(0.16,1,0.3,1)'}}>
+                <div style={{position:'sticky',top:24,width:nlHasRun?260:392,transition:'width 0.55s cubic-bezier(0.16,1,0.3,1)'}}>
 
                   <SLabel>Specialty / Discipline <span style={{fontWeight:400,color:'var(--ink3)'}}>— optional</span></SLabel>
                   <Dropdown value={nlSpecialty} onChange={setNlSpecialty} options={SPECIALTIES} placeholder="Select to apply specialty guidance…" searchable/>
                   <Divider/>
 
-                  <SLabel>Input method</SLabel>
+                  <SLabel>How do you want to add people?</SLabel>
                   <Pills value={nlInputMode} onChange={v=>{setNlInputMode(v);setNlParsed([]);setNlParseError('');setNlRawText('');setNlFileName('');}}
-                    options={[['csv','CSV Upload'],['manual','Manual Entry']]}/>
+                    options={[['manual','Type names'],['csv','Upload CSV']]}/>
                   <Divider/>
 
                   {nlInputMode==='csv'&&(
@@ -1902,6 +1994,33 @@ function App() {
                 </div>
               </div>
 
+              {/* Empty state — lookup tab */}
+              {!nlHasRun&&(
+                <div style={{flex:1,minWidth:0,paddingTop:6,animation:'fadeUp 0.5s 0.1s ease both'}}>
+                  <div style={{maxWidth:560}}>
+                    <div style={{fontSize:11,fontWeight:700,letterSpacing:'0.08em',textTransform:'uppercase',color:'var(--ink3)',marginBottom:6}}>How it works</div>
+                    <div style={{display:'flex',flexDirection:'column',gap:0,borderTop:'1px solid var(--border)'}}>
+                      {[
+                        ['Choose how to add people','Type names, or upload a CSV.'],
+                        ['Enter name + institution','One per line as “Name, Institution”, or a CSV with name and institution columns.'],
+                        ['Look them up','Same h-index, NIH, and role enrichment — exportable to CSV.'],
+                      ].map(([t,d],i)=>(
+                        <div key={t} style={{display:'flex',gap:18,alignItems:'baseline',padding:'18px 2px',borderBottom:'1px solid var(--border)'}}>
+                          <span style={{flexShrink:0,fontFamily:"'Spectral',serif",fontSize:24,fontWeight:600,color:'var(--red)',width:26,lineHeight:1}}>{i+1}</span>
+                          <div>
+                            <div style={{fontSize:15.5,fontWeight:600,color:'var(--ink)',marginBottom:3}}>{t}</div>
+                            <div style={{fontSize:14,color:'var(--ink2)',lineHeight:1.55}}>{d}</div>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                    <div style={{fontSize:12.5,color:'var(--ink3)',marginTop:16,fontStyle:'italic',fontFamily:"'Spectral',serif"}}>
+                      Accuracy is best when the institution matches the person's current affiliation.
+                    </div>
+                  </div>
+                </div>
+              )}
+
               {/* Lookup results */}
               {nlHasRun&&(
                 <div style={{flex:1,minWidth:0,animation:'fadeUp 0.45s 0.2s cubic-bezier(0.16,1,0.3,1) both'}}>
@@ -1992,11 +2111,12 @@ function App() {
       {/* Footer */}
       <div style={{borderTop:'1px solid var(--border-sub)',background:'#fff',flexShrink:0}}>
         <div style={{maxWidth:1440,margin:'0 auto',padding:'12px 36px',display:'flex',justifyContent:'space-between',alignItems:'center'}}>
-          <span style={{fontSize:11,color:'var(--ink3)'}}>Faculty Intelligence · {MD_SCHOOLS.length+DO_SCHOOLS.length} accredited programs</span>
+          <span style={{fontSize:11,color:'var(--ink3)'}}>Faculty Scout · {MD_SCHOOLS.length+DO_SCHOOLS.length} accredited programs</span>
           <span style={{fontSize:11,color:'var(--ink3)'}}>Sources: LCME · AOA · NIH Reporter · Scopus</span>
         </div>
       </div>
     </div>
+    </React.Fragment>
   );
 }
 
