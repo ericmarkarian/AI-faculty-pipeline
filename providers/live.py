@@ -183,6 +183,15 @@ Include ONLY roles that involve active service or responsibility beyond their fa
 - Institutional or divisional leadership (e.g. "Division Chief", "Program Director", "Center Director")
 - Training/education program roles (e.g. "Fellowship Program Director", "Clerkship Director")
 
+CRITICAL — attribution. Only include a role if the source text explicitly attributes it to \
+{name} specifically. On team, faculty-directory, or division listing pages, words like \
+"Director", "Faculty", "Chief", or "Leadership" are often SECTION HEADINGS, filter labels, or \
+column categories that group many people — they are NOT roles held by every person listed under \
+them. Never turn such a heading/label into a role unless the text clearly ties it to {name} by \
+name (e.g. "{name}, Director of ..."). Roles found on this person's OWN individual profile/bio \
+page are valid even if their name is not repeated in each bullet, because the whole page is about \
+them. When in doubt, leave the role out.
+
 Do NOT include:
 - Academic titles or ranks (Professor, Assistant Professor, Instructor, Lecturer, Attending)
 - General employment or affiliation (e.g. "Faculty, Stanford")
