@@ -196,15 +196,23 @@ def _worst(statuses: list[str]) -> str:
 
 
 def _nih_confidence(faculty: dict) -> tuple[str, str]:
-    if faculty.get("nih_grant_count") and faculty.get("nih_institution_unconfirmed"):
-        return "yellow", "grants found but institution unconfirmed (possible wrong-person match)"
-    return "green", ""
+    count = faculty.get("nih_grant_count") or 0
+    if count and faculty.get("nih_institution_unconfirmed"):
+        return "yellow", (
+            f"{count} grant(s) found but institution not confirmed — "
+            "may be from a previous institution; human review recommended"
+        )
+    if count:
+        return "green", f"{count} grant(s) found at confirmed institution"
+    return "green", "no NIH grants found"
 
 
 def _hindex_confidence(faculty: dict) -> tuple[str, str]:
-    if faculty.get("h_index") is not None:
-        return "green", ""
-    return "yellow", "h-index not found (manual lookup may be needed)"
+    h = faculty.get("h_index")
+    if h is not None:
+        src = faculty.get("h_index_source") or "Scopus"
+        return "green", f"h-index {h} retrieved from {src}"
+    return "yellow", "h-index not found — manual verification may be needed"
 
 
 # NIH-grants ↔ h-index consistency check.
@@ -317,7 +325,7 @@ def verify_faculty_roles(faculty: dict, client=None) -> dict:
         overall = _worst([nih_conf, hindex_eff])
         print(f"    [QC] {name} — no roles | NIH: {nih_conf} | H-index: {hindex_eff} | OVERALL: {overall.upper()}")
         return {"overall": overall, **base_signals,
-                "role_details": [], "roles_summary": "", **empty}
+                "role_details": [], "roles_summary": "no qualifying roles found", **empty}
 
     print(f"    [QC] {name} — checking {len(all_roles)} role(s) (URL + evidence)")
 

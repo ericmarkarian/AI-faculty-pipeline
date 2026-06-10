@@ -360,13 +360,19 @@ def agent2_enrich(
     training_roles   = []
     leadership_roles = []
     h_index          = None
+    h_index_source   = None
 
-    # H-index via Scopus
-    print(f"    -> Fetching H-index via OpenAlex...")
+    # H-index — Scopus first, OpenAlex fallback
+    print(f"    -> Fetching H-index (Scopus → OpenAlex)...")
     try:
         hindex_data = hindex_provider.get_hindex(name, school)
         h_index = hindex_data.get("h_index")
-        print(f"    -> H-index: {h_index}")
+        _ev = hindex_data.get("evidence_text") or ""
+        if _ev.startswith("Scopus"):
+            h_index_source = "Scopus"
+        elif "OpenAlex" in _ev or "confidence=" in _ev:
+            h_index_source = "OpenAlex"
+        print(f"    -> H-index: {h_index} ({h_index_source or 'n/a'})")
     except Exception as e:
         print(f"    [!] H-index lookup failed: {e}")
 
@@ -512,6 +518,7 @@ def agent2_enrich(
         "email": faculty.get("email") or profile_email,
         "education": profile_education or [],
         "h_index": h_index,
+        "h_index_source": h_index_source,
         "nih_project_nums":  nih_project_nums,
         "nih_grant_titles":  nih_grant_titles,
         "nih_grant_count":   nih_grant_count,

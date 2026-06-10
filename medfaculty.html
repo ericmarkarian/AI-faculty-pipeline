@@ -526,12 +526,19 @@ function QcModal({ faculty, onClose }) {
 
         {/* H-index */}
         <QcSection label="H-Index" badge={qc.hindex_confidence}>
+          {qc.consistency_confidence==='yellow'&&qc.consistency_note&&(
+            <div style={{padding:'8px 10px',marginBottom:10,borderRadius:6,
+              background:'var(--qy-bg)',border:'1px solid var(--qy-bd)',
+              fontSize:12,color:'var(--qy-tx)',fontWeight:500}}>
+              ⚠ {qc.consistency_note}
+            </div>
+          )}
           {faculty.h_index!=null
             ?<div style={{fontSize:12,color:'var(--ink)'}}>
-                H-index <strong>{faculty.h_index}</strong> — retrieved from Scopus.
+                H-index <strong>{faculty.h_index}</strong> — retrieved from {faculty.h_index_source||'Scopus'}.
               </div>
             :<div style={{fontSize:12,color:'var(--ink3)'}}>
-                Not found on Scopus — manual verification may be needed.
+                Not found — manual verification may be needed.
               </div>
           }
         </QcSection>
