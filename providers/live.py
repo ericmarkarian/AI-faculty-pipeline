@@ -884,17 +884,21 @@ def _extract_alternate_first(name: str) -> str | None:
 
 
 def _affil_matches(affil_str: str, aliases: list[str]) -> bool:
-    """True if any alias fuzzy-matches the affiliation string."""
+    """True if an alias's distinctive words all appear in the affiliation string.
+
+    "Distinctive" = drops generic words (university, medical, hospital, …) and
+    1-2 char tokens. An alias matches only when every one of its distinctive
+    words is present in the affiliation, so "johns hopkins" matches
+    "Johns Hopkins University" but "johns hopkins bayview" does not match a
+    plain "Johns Hopkins University" affiliation. No fuzzy threshold.
+    """
     if not affil_str:
         return False
-    affil = affil_str.lower()
-    affil_words = set(re.findall(r"[a-zA-Z]+", affil))
+    affil_words = set(re.findall(r"[a-zA-Z]+", affil_str.lower()))
     for alias in aliases:
         d_words = [w for w in re.findall(r"[a-zA-Z]+", alias.lower())
                    if w not in _GENERIC_WORDS and len(w) > 2]
-        if not d_words:
-            continue
-        if any(w in affil_words for w in d_words) and fuzz.partial_ratio(alias.lower(), affil) >= 85:
+        if d_words and all(w in affil_words for w in d_words):
             return True
     return False
 
@@ -993,13 +997,107 @@ def _oa_name_matches(first: str, last: str, entry: dict) -> bool:
     return oa_first[0] == first[0].lower()
 
 
-class LiveHIndexProvider(HIndexProvider):
+# ── Scopus (primary h-index source) ───────────────────────────────────────────
 
-    def __init__(self, scopus_api_key: str | None = None, discipline: str = "Pediatric Endocrinology"):
+_SCOPUS_SEARCH_URL = "https://api.elsevier.com/content/search/author"
+_SCOPUS_AUTHOR_URL = "https://api.elsevier.com/content/author/author_id/{}"
+_SCOPUS_FIELDS = "dc:identifier,preferred-name,affiliation-current,document-count,subject-area"
+
+
+class _ScopusUnavailable(Exception):
+    """Raised when Scopus can't answer (quota, rate-limit, HTTP error) → fall back to OpenAlex."""
+
+
+def _affil_score(affil_str: str, aliases: list[str]) -> float:
+    """Graded affiliation match for ranking (no threshold).
+
+    1.0 — every distinctive word of some alias is present in the affiliation
+    0.5 — some (but not all) distinctive words of an alias are present
+    0.0 — no distinctive word matches
+    "Distinctive" drops generic words (university, medical, hospital, …) and ≤2-char tokens.
+    """
+    if not affil_str:
+        return 0.0
+    affil_words = set(re.findall(r"[a-zA-Z]+", affil_str.lower()))
+    best = 0.0
+    for alias in aliases:
+        d_words = [w for w in re.findall(r"[a-zA-Z]+", alias.lower())
+                   if w not in _GENERIC_WORDS and len(w) > 2]
+        if not d_words:
+            continue
+        hits = sum(w in affil_words for w in d_words)
+        if hits == len(d_words):
+            return 1.0
+        if hits > 0:
+            best = 0.5
+    return best
+
+
+def _scopus_name_score(first: str, last: str, pref: dict) -> int:
+    """2 = exact first name (ignoring middle), 1 = first-initial match, 0 = no match."""
+    s_first = (pref.get("given-name") or "").lower().strip()
+    s_last = (pref.get("surname") or "").lower().strip()
+    if fuzz.ratio(last.lower(), s_last) < 90:
+        return 0
+    if not first or not s_first:
+        return 1
+    if s_first[0] != first[0].lower():
+        return 0
+    return 2 if s_first.split()[0].strip(".,") == first.lower() else 1
+
+
+def _scopus_subject_score(entry: dict, discipline: str) -> int:
+    """1 if any Scopus subject-area label overlaps the discipline words, else 0."""
+    if not discipline:
+        return 0
+    sas = entry.get("subject-area", [])
+    if isinstance(sas, dict):
+        sas = [sas]
+    words = [w for w in discipline.lower().split() if len(w) > 3]
+    txt = " ".join((s.get("$") or "").lower() for s in sas if isinstance(s, dict))
+    return 1 if any(w in txt for w in words) else 0
+
+
+def _scopus_affil_str(entry: dict) -> str:
+    a = entry.get("affiliation-current", {})
+    if isinstance(a, list):
+        return " ".join(x.get("affiliation-name", "") for x in a if isinstance(x, dict))
+    if isinstance(a, dict):
+        return a.get("affiliation-name", "")
+    return ""
+
+
+class LiveHIndexProvider(HIndexProvider):
+    """H-index lookup: Scopus first (curated disambiguation), OpenAlex as fallback.
+
+    Scopus is tried first. It falls back to OpenAlex when Scopus is unavailable
+    (no key, quota/rate-limit, HTTP error) or inconclusive (person not found at
+    this institution under this name).
+    """
+
+    def __init__(self, scopus_api_key: str | None = None, discipline: str = ""):
+        self._api_key = scopus_api_key or os.environ.get("SCOPUS_API_KEY")
+        self._insttoken = os.environ.get("SCOPUS_INSTTOKEN")
         self._discipline = discipline
 
     def get_hindex(self, name: str, school: str) -> HIndexEvidence:
         now = datetime.now(timezone.utc).isoformat()
+
+        # ── Primary: Scopus ──────────────────────────────────────────────────
+        if self._api_key:
+            try:
+                result = self._scopus_lookup(name, school, now)
+                if result is not None:
+                    return result
+                print(f"      [HIndex] Scopus inconclusive for {name} — trying OpenAlex")
+            except _ScopusUnavailable as e:
+                print(f"      [HIndex] Scopus unavailable ({e}) — falling back to OpenAlex")
+            except Exception as e:
+                print(f"      [HIndex] Scopus error ({e}) — falling back to OpenAlex")
+        else:
+            print(f"      [HIndex] No Scopus key set — using OpenAlex")
+
+        # ── Fallback: OpenAlex ───────────────────────────────────────────────
         try:
             return self._get_hindex_inner(name, school, now)
         except Exception as exc:
@@ -1009,6 +1107,145 @@ class LiveHIndexProvider(HIndexProvider):
                 "source_url": "", "evidence_text": f"OpenAlex error: {exc}",
                 "retrieved_at": now,
             }
+
+    # ── Scopus implementation ─────────────────────────────────────────────────
+
+    def _scopus_headers(self) -> dict:
+        headers = {"Accept": "application/json"}
+        if self._insttoken:
+            headers["X-ELS-Insttoken"] = self._insttoken
+        return headers
+
+    def _scopus_search(self, first: str, last: str) -> list[dict]:
+        resp = requests.get(
+            _SCOPUS_SEARCH_URL,
+            params={
+                "query": f"AUTHLASTNAME({last}) AND AUTHFIRST({first})",
+                "field": _SCOPUS_FIELDS,
+                "count": 25,
+                "apiKey": self._api_key,
+            },
+            headers=self._scopus_headers(),
+            timeout=15,
+        )
+        if resp.status_code == 429:
+            raise _ScopusUnavailable("rate limited / quota exhausted")
+        if resp.status_code != 200:
+            raise _ScopusUnavailable(f"author search HTTP {resp.status_code}")
+        entries = resp.json().get("search-results", {}).get("entry", [])
+        if entries and isinstance(entries[0], dict) and "error" in entries[0]:
+            return []
+        return entries
+
+    def _scopus_hindex(self, author_id: str) -> int | None:
+        resp = requests.get(
+            _SCOPUS_AUTHOR_URL.format(author_id),
+            params={"field": "h-index", "apiKey": self._api_key},
+            headers=self._scopus_headers(),
+            timeout=15,
+        )
+        if resp.status_code == 429:
+            raise _ScopusUnavailable("rate limited / quota exhausted")
+        if resp.status_code != 200:
+            raise _ScopusUnavailable(f"author profile HTTP {resp.status_code}")
+        d = resp.json().get("author-retrieval-response", [{}])[0]
+        h = d.get("h-index")
+        return int(h) if h is not None else None
+
+    def _scopus_lookup(self, name: str, school: str, now: str) -> HIndexEvidence | None:
+        """Return HIndexEvidence if confidently found in Scopus, else None (→ OpenAlex).
+
+        Ranking (no document-count): name_score + affil_score, then subject as a
+        tiebreak. The winner must have an affiliation signal (affil_score > 0).
+        When 2+ candidates tie on name+affil+subject (fragmentation), pick the one
+        with the highest h-index — for a person split across profiles, the real
+        profile carries the real h-index.
+        """
+        first, _middle, last = _parse_name_for_scopus(name)
+        if not first or not last:
+            return None
+
+        aliases = list(_xlsx_aliases_for(school) or [school.lower()])
+
+        entries = self._scopus_search(first, last)
+        if not entries:
+            alt = _extract_alternate_first(name)
+            if alt:
+                entries = self._scopus_search(alt, last)
+        if not entries:
+            return None
+
+        scored: list[dict] = []
+        for e in entries:
+            ns = _scopus_name_score(first, last, e.get("preferred-name", {}))
+            if ns == 0:
+                continue
+            affil = _scopus_affil_str(e)
+            scored.append({
+                "rank": ns + _affil_score(affil, aliases),
+                "name_score": ns,
+                "affil_score": _affil_score(affil, aliases),
+                "subject": _scopus_subject_score(e, self._discipline),
+                "entry": e,
+                "affil": affil,
+            })
+        if not scored:
+            return None  # name didn't match anyone — let OpenAlex try
+
+        scored.sort(key=lambda c: (c["rank"], c["subject"]), reverse=True)
+        top = scored[0]
+
+        # No candidate is actually at this institution → not confidently found.
+        if top["affil_score"] == 0:
+            return None
+
+        # Candidates tied with the winner on name+affil+subject (fragmentation).
+        tied = [c for c in scored
+                if c["rank"] == top["rank"] and c["subject"] == top["subject"]]
+
+        def _aid(c: dict) -> str:
+            return c["entry"].get("dc:identifier", "").replace("AUTHOR_ID:", "")
+
+        if len(tied) > 1:
+            # h-index tiebreak: the real profile of a fragmented person holds the real h-index.
+            best_c, best_h = None, -1
+            for c in tied:
+                aid = _aid(c)
+                if not aid:
+                    continue
+                h = self._scopus_hindex(aid)
+                if h is not None and h > best_h:
+                    best_c, best_h = c, h
+            if best_c is None:
+                best_c, h_index = tied[0], None
+            else:
+                top, h_index = best_c, best_h
+        else:
+            aid = _aid(top)
+            h_index = self._scopus_hindex(aid) if aid else None
+
+        confidence = (
+            "high" if top["name_score"] == 2 and top["affil_score"] == 1.0
+            else "medium" if top["affil_score"] >= 0.5
+            else "needs_review"
+        )
+
+        author_id = _aid(top)
+        pref = top["entry"].get("preferred-name", {})
+        display = f"{pref.get('given-name', '')} {pref.get('surname', '')}".strip()
+        print(f"      [Scopus] Matched '{display}' @ '{top['affil']}' "
+              f"(confidence={confidence}, h-index={h_index})")
+
+        return {
+            "h_index": h_index,
+            "scopus_author_id": author_id,
+            "source_url": f"https://www.scopus.com/authid/detail.uri?authorId={author_id}",
+            "evidence_text": (
+                f"Scopus: h-index={h_index}, affil='{top['affil']}', "
+                f"confidence={confidence}"
+            ),
+            "retrieved_at": now,
+        }
 
     def _oa_find_candidate(
         self, first: str, last: str, aliases: list[str], middle: str = ""
