@@ -1016,6 +1016,18 @@ const PIPELINE_SCHOOLS=[
   {name:"Johns Hopkins All Children's Hospital",state:"FL",type:"Pipeline"},
 ];
 const ALL_SCHOOLS=[...MD_SCHOOLS,...DO_SCHOOLS,...PIPELINE_SCHOOLS].sort((a,b)=>a.name.localeCompare(b.name));
+// Curated quick-select: top 25 pediatric programs (names match PIPELINE_SCHOOLS exactly).
+const TOP_PEDS_25=[
+  "Boston Children's Hospital","Children's Hospital of Philadelphia","Cincinnati Children's Hospital",
+  "Texas Children's Hospital","Children's Hospital Los Angeles","Children's National Hospital",
+  "Lurie Children's Hospital","Nationwide Children's Hospital","Children's Hospital Colorado",
+  "Seattle Children's Hospital","UPMC Children's Hospital of Pittsburgh","Lucile Packard Children's Hospital Stanford",
+  "UCSF Benioff Children's Hospitals","Johns Hopkins Children's Center","Children's Healthcare of Atlanta",
+  "Children's Mercy Kansas City","Monroe Carell Jr. Children's Hospital at Vanderbilt","C.S. Mott Children's Hospital",
+  "Rady Children's Hospital","Duke Children's Hospital and Health Center","Riley Hospital for Children",
+  "New York-Presbyterian Children's Hospital","UCLA Mattel Children's Hospital",
+  "Hassenfeld Children's Hospital at NYU Langone","Nemours Children's Hospital",
+];
 const SPECIALTIES=["Adolescent Medicine","Allergy & Immunology","Anesthesiology","Cardiology","Cardiothoracic Surgery","Critical Care Medicine","Dermatology","Emergency Medicine","Endocrinology","Family Medicine","Gastroenterology","General Surgery","Geriatric Medicine","Hematology","Hospital Medicine","Infectious Disease","Internal Medicine","Medical Genetics","Nephrology","Neurology","Neurosurgery","Obstetrics & Gynecology","Oncology","Ophthalmology","Orthopedic Surgery","Otolaryngology (ENT)","Pain Medicine","Pathology","Pediatric Cardiology","Pediatric Endocrinology","Pediatric Gastroenterology","Pediatric Hematology/Oncology","Pediatric Nephrology","Pediatric Neurology","Pediatric Pulmonology","Pediatric Surgery","Pediatrics","Physical Medicine & Rehabilitation","Plastic Surgery","Psychiatry","Pulmonology","Radiation Oncology","Radiology","Reproductive Endocrinology","Rheumatology","Sleep Medicine","Sports Medicine","Thoracic Surgery","Urology","Vascular Surgery"];
 const STATE_NAMES={AL:"Alabama",AK:"Alaska",AZ:"Arizona",AR:"Arkansas",CA:"California",CO:"Colorado",CT:"Connecticut",DC:"D.C.",FL:"Florida",GA:"Georgia",HI:"Hawaii",ID:"Idaho",IL:"Illinois",IN:"Indiana",IA:"Iowa",KS:"Kansas",KY:"Kentucky",LA:"Louisiana",ME:"Maine",MD:"Maryland",MA:"Massachusetts",MI:"Michigan",MN:"Minnesota",MS:"Mississippi",MO:"Missouri",MT:"Montana",NE:"Nebraska",NV:"Nevada",NH:"New Hampshire",NJ:"New Jersey",NM:"New Mexico",NY:"New York",NC:"North Carolina",ND:"North Dakota",OH:"Ohio",OK:"Oklahoma",OR:"Oregon",PA:"Pennsylvania",PR:"Puerto Rico",RI:"Rhode Island",SC:"South Carolina",SD:"South Dakota",TN:"Tennessee",TX:"Texas",UT:"Utah",VT:"Vermont",VA:"Virginia",WA:"Washington",WV:"West Virginia",WI:"Wisconsin",WY:"Wyoming"};
 const SCHOOL_META={};
@@ -1078,7 +1090,7 @@ function SchoolSelector({ selected, setSelected, typeFilter }) {
               onBlur={e=>e.target.style.borderColor='var(--border)'}
             />
             <div style={{display:'flex',gap:6,marginTop:6}}>
-              {[['Select all',()=>setSelected(filtered.map(s=>s.name))],['Clear',()=>setSelected([])]].map(([l,fn])=>(
+              {[['Top 25 Pediatric',()=>setSelected([...TOP_PEDS_25])],['Select all',()=>setSelected(filtered.map(s=>s.name))],['Clear',()=>setSelected([])]].map(([l,fn])=>(
                 <button key={l} onClick={fn} style={{flex:1,padding:'4px',background:'var(--surface)',
                   border:'1px solid var(--border-sub)',borderRadius:4,cursor:'pointer',fontSize:11,color:'var(--ink2)',fontWeight:500,transition:'all 0.12s'}}
                   onMouseEnter={e=>{ e.currentTarget.style.background='var(--red-bg)'; e.currentTarget.style.color='var(--red)'; }}

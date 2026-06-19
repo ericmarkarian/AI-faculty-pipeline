@@ -236,9 +236,65 @@ def _clean_name_parts(full_name: str) -> list[str]:
             if p.strip(".,") and p.strip(".,").upper() not in _CREDENTIALS]
 
 
+def _complete_objects(s: str) -> list[dict]:
+    """Return all complete JSON objects from a string that begins with a (possibly
+    truncated) array. Stops at the first incomplete object instead of raising."""
+    objs: list[dict] = []
+    i = s.find("[")
+    if i == -1:
+        return objs
+    i += 1
+    n = len(s)
+    while i < n:
+        while i < n and s[i] in " \t\r\n,":
+            i += 1
+        if i >= n or s[i] == "]":
+            break
+        if s[i] != "{":
+            break
+        depth, j, in_str, esc, end = 0, i, False, False, -1
+        while j < n:
+            c = s[j]
+            if in_str:
+                if esc:        esc = False
+                elif c == "\\": esc = True
+                elif c == '"':  in_str = False
+            elif c == '"':      in_str = True
+            elif c == "{":      depth += 1
+            elif c == "}":
+                depth -= 1
+                if depth == 0:
+                    end = j
+                    break
+            j += 1
+        if end == -1:
+            break  # truncated object — stop here
+        try:
+            objs.append(json.loads(s[i:end + 1]))
+        except json.JSONDecodeError:
+            break
+        i = end + 1
+    return objs
+
+
 def _parse_json(raw: str) -> dict:
     clean = raw.strip().removeprefix("```json").removeprefix("```").removesuffix("```").strip()
-    return json.loads(clean)
+    try:
+        return json.loads(clean)
+    except json.JSONDecodeError:
+        # Truncated response (e.g. a faculty member with many roles overflows the output
+        # limit mid-array). Salvage the title plus every complete role object.
+        m = re.search(r'"title"\s*:\s*(null|"(?:[^"\\]|\\.)*")', clean)
+        title = None
+        if m and m.group(1) != "null":
+            try:
+                title = json.loads(m.group(1))
+            except json.JSONDecodeError:
+                title = None
+        roles_at = clean.find('"roles"')
+        roles = _complete_objects(clean[roles_at:]) if roles_at != -1 else []
+        print(f"      [Roles] Recovered {len(roles)} role(s) from truncated JSON")
+        return {"title": title, "roles": roles}
 
 
 import functools

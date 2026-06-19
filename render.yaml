@@ -2,8 +2,13 @@ services:
   - type: web
     name: ai-faculty-pipeline
     runtime: python
-    buildCommand: pip install -r requirements.txt && playwright install chromium --with-deps
+    # Install the browser AND its headless-shell for the pinned Playwright version.
+    # `python -m playwright install chromium` (>=1.49) pulls both chromium and
+    # chrome-headless-shell, which `headless=True` requires.
+    buildCommand: pip install -r requirements.txt && python -m playwright install --with-deps chromium
     startCommand: gunicorn server:app --bind 0.0.0.0:$PORT --timeout 300 --workers 1 --threads 4
     envVars:
       - key: PYTHON_VERSION
         value: 3.11.0
+      - key: PYTHONUNBUFFERED
+        value: "1"
