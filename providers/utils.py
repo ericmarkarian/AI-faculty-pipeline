@@ -53,6 +53,26 @@ def parse_json(raw: str) -> Any:
     return json.loads(clean)
 
 
+def clean_url(url: str | None) -> str | None:
+    """Strip trailing punctuation/wrappers that LLM extraction appends to URLs.
+
+    URLs captured from prose — e.g. "(https://x.edu/jane)" or "see https://x.edu/jane."
+    — frequently carry a trailing ), ., or , that breaks the link. We strip surrounding
+    angle brackets/quotes and trailing punctuation. A trailing ) is only removed when
+    unbalanced (no matching ( in the URL), so legitimate URLs like .../Foo_(bar) survive.
+
+    Returns None for empty/whitespace input.
+    """
+    if not url:
+        return None
+    u = url.strip().strip("<>\"'").lstrip("([{")
+    while u and u[-1] in ").,;:]}>\"'":
+        if u[-1] == ")" and u.count("(") >= u.count(")"):
+            break  # balanced parenthesis is part of the path — keep it
+        u = u[:-1]
+    return u or None
+
+
 def clean_name_parts(full_name: str) -> list[str]:
     """Split a faculty name into parts, removing credential suffixes."""
     parts = [p.strip(".,") for p in full_name.split()]

@@ -1,5 +1,5 @@
 """
-Flask SSE server for Faculty Scout.
+Flask SSE server for ATLAS — Academic Talent Location And Sourcing.
 
 Usage:
     python3 server.py
@@ -126,7 +126,7 @@ def require_auth():
         return Response(
             "Access denied.",
             401,
-            {"WWW-Authenticate": 'Basic realm="Faculty Scout"'},
+            {"WWW-Authenticate": 'Basic realm="ATLAS"'},
         )
 
 

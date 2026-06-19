@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-<title>Faculty Scout</title>
+<title>ATLAS — Academic Talent Location And Sourcing</title>
 <link rel="preconnect" href="https://fonts.googleapis.com" />
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
 <link href="https://fonts.googleapis.com/css2?family=Spectral:ital,wght@0,400;0,500;0,600;0,700;1,400;1,600&family=Source+Sans+3:wght@400;500;600;700&display=swap" rel="stylesheet" />
@@ -50,6 +50,8 @@
     text-rendering: optimizeLegibility;
   }
   input, select, button, textarea { font-family: 'Source Sans 3', system-ui, sans-serif; -webkit-font-smoothing: antialiased; }
+  .about-btn { transition: background 0.15s, border-color 0.15s; }
+  .about-btn:hover { background: rgba(255,255,255,0.16); border-color: rgba(255,255,255,0.85); }
 
   ::-webkit-scrollbar { width: 4px; height: 4px; }
   ::-webkit-scrollbar-track { background: transparent; }
@@ -64,7 +66,7 @@
   @keyframes glow    { 0%,100% { box-shadow:none; } }
   @keyframes pulse   { 0%,100% { opacity:1; } 50% { opacity:0.45; } }
 
-  /* ── Intro animation: hero "Faculty Scout" shrinks & flies to the top-left ── */
+  /* ── Intro animation: hero "ATLAS" shrinks & flies to the top-left ── */
   @keyframes appReveal { from { opacity:0; transform:translateY(8px); } to { opacity:1; transform:none; } }
   @keyframes introOverlayOut { 0%,72% { opacity:1; } 100% { opacity:0; } }
   @keyframes introTitleMove {
@@ -542,6 +544,96 @@ function QcModal({ faculty, onClose }) {
               </div>
           }
         </QcSection>
+
+      </div>
+    </div>
+  );
+}
+
+// ── About ATLAS ───────────────────────────────────────────────────────────────
+// To add a real photo: set `photo` to an image URL or local path (e.g. 'assets/eric.jpg').
+// To set LinkedIn: replace the `linkedin` URL. Leave as '' to hide the link.
+const ATLAS_BUILDERS = [
+  { name:'Eric Markarian',     initials:'EM', photo: 'https://media.licdn.com/dms/image/v2/D5603AQEhiAEL6WKp1w/profile-displayphoto-shrink_800_800/B56ZbFYY7PH0Ac-/0/1747068227568?e=1783555200&v=beta&t=2QHRlyjGFUnqJYdV4K13HYr1lCLE4f3ndJVhUzDhe4E', linkedin:'https://www.linkedin.com/in/eric-markarian' },
+  { name:'Chehan Wijayaratne', initials:'CW', photo: 'https://media.licdn.com/dms/image/v2/D5603AQGaYW8fezwh2w/profile-displayphoto-crop_800_800/B56Z6KYZ4SH0AM-/0/1780438114042?e=1783555200&v=beta&t=nR6HCFTlfUx6dNkgDLgTO3m2GZVZH3mCMb58EeFbajI', linkedin:'https://www.linkedin.com/in/chehanw/' },
+];
+const ATLAS_SUPPORTERS = ['Dr. Natalie Pageler', 'Dr. Aydin Zahedivash'];
+
+function PersonCard({ person }) {
+  const inner = (
+    <div style={{display:'flex',flexDirection:'column',alignItems:'center',gap:10,width:140}}>
+      <div style={{width:84,height:84,borderRadius:'50%',overflow:'hidden',flexShrink:0,
+        background:'var(--red-wash, #F6ECEC)',border:'1px solid var(--border)',
+        display:'flex',alignItems:'center',justifyContent:'center'}}>
+        {person.photo
+          ? <img src={person.photo} alt={person.name} style={{width:'100%',height:'100%',objectFit:'cover'}}/>
+          : <span style={{fontFamily:"'Spectral',serif",fontSize:28,fontWeight:600,color:'var(--red)'}}>{person.initials}</span>}
+      </div>
+      <div style={{textAlign:'center'}}>
+        <div style={{fontFamily:"'Spectral',serif",fontSize:15,fontWeight:600,color:'var(--ink)',lineHeight:1.2}}>{person.name}</div>
+        {person.linkedin&&<div style={{fontSize:11.5,color:'var(--red)',marginTop:3,letterSpacing:'0.02em'}}>LinkedIn ↗</div>}
+      </div>
+    </div>
+  );
+  return person.linkedin
+    ? <a href={person.linkedin} target="_blank" rel="noopener noreferrer" style={{textDecoration:'none'}}>{inner}</a>
+    : inner;
+}
+
+function AboutModal({ onClose }) {
+  useEffect(()=>{
+    const h=e=>{ if(e.key==='Escape') onClose(); };
+    document.addEventListener('keydown',h);
+    return ()=>document.removeEventListener('keydown',h);
+  },[onClose]);
+
+  return (
+    <div onClick={onClose} style={{
+      position:'fixed',inset:0,zIndex:1200,
+      background:'oklch(16% 0.022 25 / 0.50)',
+      display:'flex',alignItems:'center',justifyContent:'center',padding:24,
+    }}>
+      <div onClick={e=>e.stopPropagation()} style={{
+        background:'#fff',width:'100%',maxWidth:560,
+        maxHeight:'88vh',overflow:'auto',
+        border:'1px solid var(--border)',borderRadius:10,
+        boxShadow:'0 32px 80px oklch(16% 0.022 25 / 0.18)',
+        animation:'zoomIn 0.24s cubic-bezier(0.16,1,0.3,1)',
+      }}>
+
+        {/* Header */}
+        <div style={{padding:'28px 32px 22px',borderBottom:'1px solid var(--border-sub)',position:'relative'}}>
+          <button onClick={onClose} aria-label="Close" style={{position:'absolute',top:18,right:20,
+            background:'none',border:'none',cursor:'pointer',fontSize:20,color:'var(--ink3)',lineHeight:1}}>×</button>
+          <div style={{fontSize:10,fontWeight:700,color:'var(--ink3)',textTransform:'uppercase',
+            letterSpacing:'0.12em',marginBottom:8}}>About</div>
+          <div style={{fontFamily:"'Spectral',serif",fontSize:30,fontWeight:600,letterSpacing:'0.06em',color:'var(--red)',lineHeight:1}}>ATLAS</div>
+          <div style={{fontFamily:"'Spectral',serif",fontStyle:'italic',fontSize:14,color:'var(--ink2)',marginTop:8}}>Academic Talent Location And Sourcing</div>
+        </div>
+
+        {/* Body */}
+        <div style={{padding:'24px 32px 30px'}}>
+          <p style={{fontSize:14,color:'var(--ink2)',lineHeight:1.6,margin:'0 0 26px',textAlign:'center'}}>
+            A faculty-discovery tool for academic medicine.
+          </p>
+
+          <div style={{fontSize:10,fontWeight:700,color:'var(--ink3)',textTransform:'uppercase',
+            letterSpacing:'0.12em',marginBottom:16}}>Built by</div>
+          <div style={{display:'flex',justifyContent:'center',gap:32,marginBottom:14}}>
+            {ATLAS_BUILDERS.map(p=><PersonCard key={p.name} person={p}/>)}
+          </div>
+          <div style={{textAlign:'center',fontFamily:"'Spectral',serif",fontSize:13.5,color:'var(--ink2)',marginBottom:24}}>
+            Stanford University · Class of 2026
+          </div>
+
+          <div style={{borderTop:'1px solid var(--border-sub)',paddingTop:18,textAlign:'center'}}>
+            <div style={{fontSize:10,fontWeight:700,color:'var(--ink3)',textTransform:'uppercase',
+              letterSpacing:'0.12em',marginBottom:8}}>With the support of</div>
+            <div style={{fontFamily:"'Spectral',serif",fontSize:14,color:'var(--ink)'}}>
+              {ATLAS_SUPPORTERS.join(' · ')}
+            </div>
+          </div>
+        </div>
 
       </div>
     </div>
@@ -1179,7 +1271,7 @@ const NlFacultyRow = React.memo(function NlFacultyRow({faculty:f,isNew,onRowClic
 
 /* ── App ── */
 function App() {
-  /* ── Intro animation (hero "Faculty Scout" → shrinks to top-left logo) ── */
+  /* ── Intro animation (hero "ATLAS" → shrinks to top-left logo) ── */
   const [intro,setIntro] = useState(()=>{
     try {
       if (window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches) return false;
@@ -1219,6 +1311,7 @@ function App() {
   const [errorMsg,setErrorMsg]       = useState('');
   const [qcModal,setQcModal]         = useState(null);
   const [detailFaculty,setDetail]    = useState(null);
+  const [aboutOpen,setAboutOpen]     = useState(false);
   const esRef = useRef(null);
 
   /* ── Name Lookup tab state ── */
@@ -1530,12 +1623,12 @@ function App() {
         <div className="intro-overlay" style={{position:'fixed',inset:0,zIndex:9999,background:'var(--bg)',
           display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',pointerEvents:'none'}}>
           <div className="intro-title" style={{fontFamily:"'Spectral',serif",fontWeight:600,
-            fontSize:'clamp(40px,7.5vw,76px)',letterSpacing:'-0.025em',color:'var(--red)',lineHeight:1}}>
-            Faculty Scout
+            fontSize:'clamp(40px,7.5vw,76px)',letterSpacing:'0.06em',color:'var(--red)',lineHeight:1}}>
+            ATLAS
           </div>
           <div className="intro-tag" style={{fontFamily:"'Spectral',serif",fontStyle:'italic',
             fontSize:'clamp(14px,1.5vw,18px)',color:'var(--ink3)',marginTop:14,letterSpacing:'0.01em'}}>
-            Academic faculty intelligence
+            Academic Talent Location And Sourcing
           </div>
         </div>
       )}
@@ -1545,19 +1638,18 @@ function App() {
       {qcModal&&<QcModal faculty={qcModal} onClose={()=>setQcModal(null)}/>}
       {nlDetail&&<FacultyDetail faculty={nlDetail} onClose={()=>setNlDetail(null)} onOpenQc={()=>setNlQcModal(nlDetail)}/>}
       {nlQcModal&&<QcModal faculty={nlQcModal} onClose={()=>setNlQcModal(null)}/>}
+      {aboutOpen&&<AboutModal onClose={()=>setAboutOpen(false)}/>}
 
       {/* Topbar — cardinal masthead */}
       <div style={{background:'var(--red)',padding:'0 36px',flexShrink:0}}>
         <div style={{maxWidth:1440,margin:'0 auto',height:54,display:'flex',alignItems:'center',justifyContent:'space-between'}}>
-          <span style={{fontFamily:"'Spectral',serif",fontSize:20,fontWeight:600,letterSpacing:'0',color:'#fff'}}>Faculty Scout</span>
-          <div style={{display:'flex',alignItems:'center',gap:8}}>
-            <span style={{width:6,height:6,borderRadius:'50%',flexShrink:0,background:(loading||nlLoading)?'#FEDD5C':'rgba(255,255,255,0.85)',animation:(loading||nlLoading)?'pulse 1.4s ease-in-out infinite':'none',transition:'background 0.4s'}}/>
-            <span style={{fontSize:11,color:'rgba(255,255,255,0.85)',letterSpacing:'0.02em'}}>
-              {activeTab==='search'
-                ?(loading?`${resultsMapRef.current.size} enriched…`:ran?`${displayed.length} of ${resultsMapRef.current.size} shown`:'NIH Reporter · Scopus · LCME · AOA')
-                :(nlLoading?`${nlResultsMapRef.current.size} enriched…`:nlRan?`${nlDisplayed.length} of ${nlResultsMapRef.current.size} shown`:'NIH Reporter · Scopus · LCME · AOA')
-              }
-            </span>
+          <div style={{display:'flex',alignItems:'baseline',gap:12}}>
+            <span style={{fontFamily:"'Spectral',serif",fontSize:20,fontWeight:600,letterSpacing:'0.08em',color:'#fff'}}>ATLAS</span>
+            <span style={{width:1,height:14,background:'rgba(255,255,255,0.35)',alignSelf:'center'}}/>
+            <span style={{fontFamily:"'Spectral',serif",fontStyle:'italic',fontSize:12.5,color:'rgba(255,255,255,0.8)',letterSpacing:'0.01em'}}>Academic Talent Location And Sourcing</span>
+          </div>
+          <div style={{display:'flex',alignItems:'center',gap:18}}>
+            <button className="about-btn" onClick={()=>setAboutOpen(true)} style={{padding:'5px 16px',border:'1px solid rgba(255,255,255,0.5)',borderRadius:999,background:'transparent',color:'#fff',fontSize:12.5,fontWeight:600,letterSpacing:'0.04em',cursor:'pointer'}}>About</button>
           </div>
         </div>
       </div>
@@ -1590,8 +1682,8 @@ function App() {
             </div>
             <div style={{fontSize:14,color:'var(--ink2)',lineHeight:1.6}}>
               {activeTab==='search'
-                ? <span>Pick one or more institutions and a specialty — Faculty Scout pulls the full faculty roster from each school's directory and enriches everyone with h-index, NIH grants, leadership &amp; editorial roles, and training history.</span>
-                : <span>Already have names in mind? Type them in (or upload a CSV) with each person's institution, and Faculty Scout enriches just those individuals with the same data.</span>}
+                ? <span>Pick one or more institutions and a specialty — ATLAS pulls the full faculty roster from each school's directory and enriches everyone with h-index, NIH grants, leadership &amp; editorial roles, and training history.</span>
+                : <span>Already have names in mind? Type them in (or upload a CSV) with each person's institution, and ATLAS enriches just those individuals with the same data.</span>}
             </div>
           </div>
         </div>
@@ -2118,7 +2210,7 @@ function App() {
       {/* Footer */}
       <div style={{borderTop:'1px solid var(--border-sub)',background:'#fff',flexShrink:0}}>
         <div style={{maxWidth:1440,margin:'0 auto',padding:'12px 36px',display:'flex',justifyContent:'space-between',alignItems:'center'}}>
-          <span style={{fontSize:11,color:'var(--ink3)'}}>Faculty Scout · {MD_SCHOOLS.length+DO_SCHOOLS.length} accredited programs</span>
+          <span style={{fontSize:11,color:'var(--ink3)'}}>ATLAS · {MD_SCHOOLS.length+DO_SCHOOLS.length} accredited programs</span>
           <span style={{fontSize:11,color:'var(--ink3)'}}>Sources: LCME · AOA · NIH Reporter · Scopus</span>
         </div>
       </div>

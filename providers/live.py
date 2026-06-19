@@ -15,6 +15,7 @@ from providers.base import (
     NihProvider, RolesProvider, HIndexProvider,
     Grant, RoleEvidence, HIndexEvidence,
 )
+from providers.utils import clean_url
 
 _INSTITUTION_NIH_NAMES: dict[str, list[str]] = {
     "Stanford University School of Medicine":                                          ["STANFORD", "LUCILE SALTER PACKARD"],
@@ -809,6 +810,8 @@ class LiveRolesProvider(RolesProvider):
         for role in roles:
             role.setdefault("retrieved_at", now)
             role.setdefault("model", _LIVE_MODEL)
+            if role.get("source_url"):
+                role["source_url"] = clean_url(role["source_url"])
         return roles
 
     def get_roles(self, name: str, school: str, profile_url: str = "") -> list[RoleEvidence]:
@@ -835,7 +838,7 @@ class LiveRolesProvider(RolesProvider):
             parsed = _parse_json(raw)
             title = parsed.get("title") or None
             urls = parsed.get("profile_urls") or []
-            discovered_urls = [u for u in urls if isinstance(u, str) and u]
+            discovered_urls = [c for u in urls if isinstance(u, str) and (c := clean_url(u))]
         except Exception:
             title = None
             discovered_urls = []

@@ -18,7 +18,29 @@ import requests
 from bs4 import BeautifulSoup
 
 from providers.base import RoleEvidence
-from providers.profile_scrapers.base import ProfileScraper
+from providers.profile_scrapers.base import ProfileData, ProfileScraper
+from providers.utils import extract_email_from_html, extract_email_via_playwright
+
+# Academic-rank keywords used to recognise the professional-title heading.
+_RANK_KEYWORDS = (
+    "professor", "instructor", "lecturer", "fellow", "scientist",
+    "dean", "scholar", "chair", "clinical", "physician",
+)
+
+
+def _extract_title(soup: BeautifulSoup) -> str | None:
+    """Return the professional title from a Stanford Profiles page.
+
+    The page layout is <h1>Name</h1> immediately followed by an <h2> holding the
+    academic rank (e.g. "Assistant Professor of Medicine (Endocrinology)"). We take
+    the first <h2> whose text names a rank, which is more authoritative than a
+    division-directory listing.
+    """
+    for h2 in soup.find_all("h2"):
+        text = h2.get_text(" ", strip=True)
+        if text and any(kw in text.lower() for kw in _RANK_KEYWORDS):
+            return text
+    return None
 
 _HANDLES_DOMAIN = "profiles.stanford.edu"
 
@@ -152,3 +174,27 @@ class StanfordProfileScraper(ProfileScraper):
             return []
 
         return _scrape_html(resp.text, profile_url, include_historical)
+
+    def get_profile_data(
+        self,
+        profile_url: str,
+        include_historical: bool = False,
+    ) -> ProfileData:
+        """Fetch once; extract authoritative title + roles + email from the profile page."""
+        try:
+            resp = requests.get(profile_url, headers=_HEADERS, timeout=20)
+            resp.raise_for_status()
+        except Exception as e:
+            print(f"    [ProfileScraper] Failed to fetch {profile_url}: {e}")
+            return ProfileData(title=None, roles=[], email=None, education=[])
+
+        html = resp.text
+        roles = _scrape_html(html, profile_url, include_historical)
+        soup = BeautifulSoup(html, "html.parser")
+        title = _extract_title(soup)
+        if title:
+            print(f"    [ProfileScraper] Title from Stanford profile: {title}")
+
+        email = extract_email_from_html(html) or extract_email_via_playwright(profile_url)
+
+        return ProfileData(title=title, roles=roles, email=email, education=[])

@@ -1,0 +1,385 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Stanford Pediatric Endocrinology Faculty</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      background: #f3f4f6;
+      color: #1f2937;
+      min-height: 100vh;
+    }
+
+    /* ── Header ── */
+    header {
+      background: #1e3a5f;
+      color: white;
+      padding: 2rem 1.5rem 1.5rem;
+      text-align: center;
+    }
+    header h1 {
+      font-size: 1.75rem;
+      font-weight: 700;
+      letter-spacing: -0.02em;
+    }
+    header .subtitle {
+      margin-top: 0.4rem;
+      font-size: 0.95rem;
+      opacity: 0.75;
+    }
+    .search-wrap {
+      margin-top: 1.25rem;
+      display: flex;
+      justify-content: center;
+    }
+    #search {
+      width: 100%;
+      max-width: 420px;
+      padding: 0.55rem 1rem;
+      border: none;
+      border-radius: 9999px;
+      font-size: 0.95rem;
+      outline: none;
+      background: rgba(255,255,255,0.15);
+      color: white;
+    }
+    #search::placeholder { color: rgba(255,255,255,0.55); }
+    #search:focus { background: rgba(255,255,255,0.25); }
+
+    /* ── Grid ── */
+    main {
+      max-width: 1280px;
+      margin: 0 auto;
+      padding: 2rem 1.25rem;
+    }
+    #grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 1.25rem;
+    }
+    @media (max-width: 900px)  { #grid { grid-template-columns: repeat(2, 1fr); } }
+    @media (max-width: 560px)  { #grid { grid-template-columns: 1fr; } }
+
+    #no-results {
+      grid-column: 1/-1;
+      text-align: center;
+      color: #6b7280;
+      padding: 3rem 0;
+      font-size: 1rem;
+    }
+
+    /* ── Card ── */
+    .card {
+      background: white;
+      border-radius: 0.75rem;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.08), 0 1px 2px rgba(0,0,0,0.04);
+      cursor: pointer;
+      transition: box-shadow 0.15s, transform 0.15s;
+      overflow: hidden;
+    }
+    .card:hover { box-shadow: 0 4px 12px rgba(0,0,0,0.12); transform: translateY(-1px); }
+    .card.expanded { box-shadow: 0 8px 24px rgba(0,0,0,0.15); }
+    .card.dimmed { opacity: 0.6; }
+
+    .card-head {
+      padding: 1.1rem 1.25rem 1rem;
+    }
+
+    .card-name {
+      font-size: 1rem;
+      font-weight: 600;
+      line-height: 1.35;
+    }
+    .card-name a {
+      color: #1e3a5f;
+      text-decoration: none;
+    }
+    .card-name a:hover { text-decoration: underline; }
+    .card-name span { color: #1f2937; }
+
+    .card-title {
+      margin-top: 0.3rem;
+      font-size: 0.8rem;
+      color: #6b7280;
+      display: -webkit-box;
+      -webkit-line-clamp: 2;
+      -webkit-box-orient: vertical;
+      overflow: hidden;
+    }
+    .card.expanded .card-title {
+      -webkit-line-clamp: unset;
+      overflow: visible;
+    }
+
+    /* ── Badges ── */
+    .badge-row {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.35rem;
+      padding: 0 1.25rem 1rem;
+    }
+    .badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.3rem;
+      font-size: 0.7rem;
+      font-weight: 600;
+      padding: 0.2rem 0.55rem;
+      border-radius: 9999px;
+      letter-spacing: 0.02em;
+      text-transform: uppercase;
+    }
+    .badge-nih        { background: #fee2e2; color: #b91c1c; }
+    .badge-editorial  { background: #dbeafe; color: #1d4ed8; }
+    .badge-society    { background: #dcfce7; color: #15803d; }
+    .badge-leadership { background: #f3e8ff; color: #7c3aed; }
+    .badge-training   { background: #fef3c7; color: #b45309; }
+
+    /* ── Expand section ── */
+    .card-detail {
+      display: none;
+      padding: 0 1.25rem 1.25rem;
+      border-top: 1px solid #f0f0f0;
+    }
+    .card.expanded .card-detail { display: block; }
+
+    .detail-section { margin-top: 1rem; }
+    .detail-label {
+      font-size: 0.7rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      margin-bottom: 0.4rem;
+    }
+    .label-editorial  { color: #1d4ed8; }
+    .label-society    { color: #15803d; }
+    .label-leadership { color: #7c3aed; }
+    .label-training   { color: #b45309; }
+    .label-nih        { color: #b91c1c; }
+
+    .detail-section ul {
+      list-style: none;
+      display: flex;
+      flex-direction: column;
+      gap: 0.3rem;
+    }
+    .detail-section li {
+      font-size: 0.83rem;
+      color: #374151;
+      line-height: 1.45;
+    }
+    .role-org { color: #6b7280; font-size: 0.78rem; }
+
+    .profile-link {
+      display: inline-block;
+      margin-top: 1rem;
+      font-size: 0.82rem;
+      color: #1e3a5f;
+      font-weight: 600;
+      text-decoration: none;
+    }
+    .profile-link:hover { text-decoration: underline; }
+
+    .chevron {
+      float: right;
+      font-size: 0.75rem;
+      color: #9ca3af;
+      transition: transform 0.2s;
+      margin-top: 2px;
+    }
+    .card.expanded .chevron { transform: rotate(180deg); }
+  </style>
+</head>
+<body>
+
+<header>
+  <h1>Stanford Pediatric Endocrinology Faculty</h1>
+  <p class="subtitle" id="count-label">Loading…</p>
+  <div class="search-wrap">
+    <input id="search" type="search" placeholder="Search by name…" autocomplete="off" />
+  </div>
+</header>
+
+<main>
+  <div id="grid"></div>
+</main>
+
+<script>
+(function () {
+  const grid = document.getElementById('grid');
+  const searchInput = document.getElementById('search');
+  const countLabel = document.getElementById('count-label');
+
+  let allFaculty = [];
+  let expandedCard = null;
+
+  // ── Helpers ──────────────────────────────────────────────────────────────
+
+  function parseGrantTitles(str) {
+    if (!str) return [];
+    return str.split('|').map(s => s.trim()).filter(Boolean);
+  }
+
+  function hasActivity(f) {
+    return (
+      f.nih_grant_count > 0 ||
+      (f.editorial_roles  && f.editorial_roles.length  > 0) ||
+      (f.society_roles    && f.society_roles.length    > 0) ||
+      (f.leadership_roles && f.leadership_roles.length > 0) ||
+      (f.training_roles   && f.training_roles.length   > 0)
+    );
+  }
+
+  function roleList(roles, labelClass, labelText) {
+    if (!roles || roles.length === 0) return '';
+    const items = roles.map(r => {
+      const org = r.org ? `<span class="role-org"> — ${escHtml(r.org)}</span>` : '';
+      return `<li>${escHtml(r.role)}${org}</li>`;
+    }).join('');
+    return `
+      <div class="detail-section">
+        <div class="detail-label ${labelClass}">${labelText}</div>
+        <ul>${items}</ul>
+      </div>`;
+  }
+
+  function escHtml(str) {
+    if (!str) return '';
+    return str.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+  }
+
+  // Minor words that stay lowercase unless they start the string
+  const _minorWords = new Set(['a','an','the','and','but','or','for','nor','on','at','to','by','in','of','up','as','is']);
+
+  function toTitleCase(str) {
+    if (!str) return '';
+    return str.replace(/\S+/g, (word, offset) => {
+      const lower = word.toLowerCase();
+      if (offset > 0 && _minorWords.has(lower)) return lower;
+      return lower.charAt(0).toUpperCase() + lower.slice(1);
+    });
+  }
+
+  // ── Card builder ─────────────────────────────────────────────────────────
+
+  function buildCard(f) {
+    const card = document.createElement('div');
+    card.className = 'card' + (hasActivity(f) ? '' : ' dimmed');
+    card.dataset.name = (f.full_name || '').toLowerCase();
+
+    // Name — always link; fall back to a Google search if no profile URL
+    const searchUrl = `https://www.google.com/search?q=${encodeURIComponent((f.full_name || '') + ' ' + (f.school || '') + ' faculty')}`;
+    const linkUrl = f.profile_url || searchUrl;
+    const nameHtml = `<a href="${escHtml(linkUrl)}" target="_blank" rel="noopener" onclick="event.stopPropagation()">${escHtml(f.full_name)}</a>`;
+
+    // Badges
+    const badges = [];
+    if (f.nih_grant_count > 0)
+      badges.push(`<span class="badge badge-nih">NIH (${f.nih_grant_count})</span>`);
+    if (f.editorial_roles  && f.editorial_roles.length  > 0)
+      badges.push(`<span class="badge badge-editorial">Editorial</span>`);
+    if (f.society_roles    && f.society_roles.length    > 0)
+      badges.push(`<span class="badge badge-society">Society</span>`);
+    if (f.leadership_roles && f.leadership_roles.length > 0)
+      badges.push(`<span class="badge badge-leadership">Leadership</span>`);
+    if (f.training_roles   && f.training_roles.length   > 0)
+      badges.push(`<span class="badge badge-training">Training</span>`);
+    const badgeRow = badges.length
+      ? `<div class="badge-row">${badges.join('')}</div>`
+      : '';
+
+    // Detail section — roles
+    let detailHtml = '';
+    detailHtml += roleList(f.editorial_roles,  'label-editorial',  'Editorial Roles');
+    detailHtml += roleList(f.society_roles,    'label-society',    'Society Roles');
+    detailHtml += roleList(f.leadership_roles, 'label-leadership', 'Leadership Roles');
+    detailHtml += roleList(f.training_roles,   'label-training',   'Training Roles');
+
+    // NIH grants
+    const grantTitles = parseGrantTitles(f.nih_grant_titles);
+    if (grantTitles.length > 0) {
+      const items = grantTitles.map(t => `<li>${escHtml(t)}</li>`).join('');
+      detailHtml += `
+        <div class="detail-section">
+          <div class="detail-label label-nih">NIH Grants</div>
+          <ul>${items}</ul>
+        </div>`;
+    }
+
+    // Profile link — always show; label distinguishes real profile from search fallback
+    const profileLinkUrl = f.profile_url || searchUrl;
+    const profileLinkLabel = f.profile_url ? 'View profile →' : 'Search online →';
+    detailHtml += `<a class="profile-link" href="${escHtml(profileLinkUrl)}" target="_blank" rel="noopener" onclick="event.stopPropagation()">${profileLinkLabel}</a>`;
+
+    card.innerHTML = `
+      <div class="card-head">
+        <div class="card-name">
+          ${nameHtml}
+          <span class="chevron">▼</span>
+        </div>
+        <div class="card-title">${escHtml(toTitleCase(f.title || ''))}</div>
+      </div>
+      ${badgeRow}
+      <div class="card-detail">${detailHtml || '<p style="color:#9ca3af;font-size:0.82rem">No additional data available.</p>'}</div>
+    `;
+
+    card.addEventListener('click', () => toggleCard(card));
+    return card;
+  }
+
+  function toggleCard(card) {
+    if (expandedCard && expandedCard !== card) {
+      expandedCard.classList.remove('expanded');
+    }
+    card.classList.toggle('expanded');
+    expandedCard = card.classList.contains('expanded') ? card : null;
+  }
+
+  // ── Render / filter ──────────────────────────────────────────────────────
+
+  function render(faculty) {
+    grid.innerHTML = '';
+    if (faculty.length === 0) {
+      grid.innerHTML = '<div id="no-results">No faculty match your search.</div>';
+      return;
+    }
+    const frag = document.createDocumentFragment();
+    faculty.forEach(f => frag.appendChild(buildCard(f)));
+    grid.appendChild(frag);
+  }
+
+  function applyFilter() {
+    const q = searchInput.value.trim().toLowerCase();
+    if (!q) {
+      render(allFaculty);
+      return;
+    }
+    render(allFaculty.filter(f => f.full_name.toLowerCase().includes(q)));
+  }
+
+  // ── Boot ─────────────────────────────────────────────────────────────────
+
+  fetch('../faculty_output.json')
+    .then(r => {
+      if (!r.ok) throw new Error(`HTTP ${r.status}`);
+      return r.json();
+    })
+    .then(data => {
+      allFaculty = data;
+      countLabel.textContent = `${data.length} faculty members`;
+      render(allFaculty);
+    })
+    .catch(err => {
+      countLabel.textContent = 'Failed to load data';
+      grid.innerHTML = `<div id="no-results">Error loading faculty_output.json: ${escHtml(err.message)}<br>Make sure you open this file via a local server (e.g. <code>python3 -m http.server</code>).</div>`;
+    });
+
+  searchInput.addEventListener('input', applyFilter);
+})();
+</script>
+</body>
+</html>

@@ -501,6 +501,158 @@
       "notes": "No university faculty directory found; hospital page lists faculty members.",
       "verified": true,
       "needs_review": false
+    },
+    "University of Colorado School of Medicine / Children's Hospital Colorado": {
+      "university_url": "https://medschool.cuanschutz.edu/pediatrics/sections/adolescent-medicine",
+      "hospital_url": "https://www.childrenscolorado.org/doctors-and-departments/departments/adolescent-medicine/care-team/",
+      "url": "https://medschool.cuanschutz.edu/pediatrics/sections/adolescent-medicine",
+      "notes": "Both URLs provide faculty directories for the Adolescent Medicine division at the University of Colorado School of Medicine and Children's Hospital Colorado.",
+      "verified": true,
+      "needs_review": false
+    },
+    "Keck School of Medicine USC / Children's Hospital Los Angeles": {
+      "university_url": "https://keck.usc.edu/faculty-search/",
+      "hospital_url": "https://www.chla.org/ko/adolescent-and-young-adult-medicine/team",
+      "url": "https://keck.usc.edu/faculty-search/",
+      "notes": "The Keck School of Medicine's faculty directory includes individual profiles, such as that of Dr. Jonathan Warus, an Adolescent Medicine physician. The Children's Hospital Los Angeles page lists team members in the Adolescent and Young Adult Medicine division.",
+      "verified": true,
+      "needs_review": false
+    },
+    "Children's National Hospital / George Washington University": {
+      "university_url": null,
+      "hospital_url": "https://www.childrensnational.org/get-care/departments/adolescent-and-young-adult-medicine/meet-the-team",
+      "url": "https://www.childrensnational.org/get-care/departments/adolescent-and-young-adult-medicine/meet-the-team",
+      "notes": "No university faculty directory found; hospital directory available.",
+      "verified": true,
+      "needs_review": false
+    },
+    "University of Cincinnati College of Medicine / Cincinnati Children's": {
+      "university_url": "https://www.cincinnatichildrens.org/research/divisions/a/adolescent/team",
+      "hospital_url": "https://www.cincinnatichildrens.org/service/a/adolescent-medicine/team",
+      "url": "https://www.cincinnatichildrens.org/research/divisions/a/adolescent/team",
+      "notes": "The university faculty directory is hosted on the Cincinnati Children's website, listing faculty members with names and titles. The hospital specialist page also provides a comprehensive list of specialists in Adolescent and Young Adult Medicine.",
+      "verified": true,
+      "needs_review": false
+    },
+    "Ohio State University College of Medicine / Nationwide Children's": {
+      "university_url": null,
+      "hospital_url": "https://www.nationwidechildrens.org/specialties/adolescent-medicine/meet-our-team",
+      "url": "https://www.nationwidechildrens.org/specialties/adolescent-medicine/meet-our-team",
+      "notes": "No specific faculty directory for Adolescent Medicine found on Ohio State University's website; the hospital's page lists the team members.",
+      "verified": true,
+      "needs_review": false
+    },
+    "UC San Diego School of Medicine / Rady Children's Hospital": {
+      "university_url": "https://pediatrics.ucsd.edu/divisions/adolescent-young-adult-medicine/faculty/index.html",
+      "hospital_url": null,
+      "url": "https://pediatrics.ucsd.edu/divisions/adolescent-young-adult-medicine/faculty/index.html",
+      "notes": "The university faculty directory lists individual faculty members with names and titles. No specific hospital specialist page was found for the Adolescent Medicine division at Rady Children's Hospital.",
+      "verified": true,
+      "needs_review": false
+    },
+    "University of Washington School of Medicine / Seattle Children's": {
+      "university_url": "https://www.peds.uw.edu/directory?field_division_target_id=26",
+      "hospital_url": "https://www.seattlechildrens.org/clinics/adolescent-medicine/",
+      "url": "https://www.peds.uw.edu/directory?field_division_target_id=26",
+      "notes": "Both URLs provide comprehensive faculty directories for the Adolescent Medicine division at the University of Washington School of Medicine and Seattle Children's Hospital.",
+      "verified": true,
+      "needs_review": false
+    },
+    "Baylor College of Medicine / Texas Children's Hospital": {
+      "university_url": "https://www.bcm.edu/departments/pediatrics/divisions-and-centers/adolescent-medicine-sports-medicine/faculty",
+      "hospital_url": "https://www.texaschildrens.org/departments/adolescent-medicine/our-team",
+      "url": "https://www.bcm.edu/departments/pediatrics/divisions-and-centers/adolescent-medicine-sports-medicine/faculty",
+      "notes": "Both URLs provide comprehensive lists of faculty members with names and titles.",
+      "verified": true,
+      "needs_review": false
+    },
+    "Duke University School of Medicine": {
+      "university_url": "https://pediatrics.duke.edu/divisions/general-pediatrics-and-adolescent-health/faculty",
+      "hospital_url": null,
+      "url": "https://pediatrics.duke.edu/divisions/general-pediatrics-and-adolescent-health/faculty",
+      "notes": "The Adolescent Medicine division is part of the General Pediatrics and Adolescent Health division at Duke University School of Medicine. The faculty directory is available on the university's website. No separate hospital specialist page was found.",
+      "verified": true,
+      "needs_review": false
+    },
+    "Vanderbilt University School of Medicine / Monroe Carell Jr. Children's": {
+      "university_url": "https://pediatrics.vumc.org/person/adolescent-faculty",
+      "hospital_url": "https://www.childrenshospitalvanderbilt.org/locations/vanderbilt-adolescent-and-young-adult-health",
+      "url": "https://pediatrics.vumc.org/person/adolescent-faculty",
+      "notes": "The university faculty directory provides detailed information on faculty members, including names, titles, and contact information. The hospital page lists specialists with names and titles, focusing on clinical services.",
+      "verified": true,
+      "needs_review": false
+    },
+    "Emory University School of Medicine / Children's Healthcare of Atlanta": {
+      "university_url": null,
+      "hospital_url": "https://www.choa.org/medical-services/adolescent-medicine",
+      "url": "https://www.choa.org/medical-services/adolescent-medicine",
+      "notes": "No university faculty directory found; hospital page lists faculty members.",
+      "verified": true,
+      "needs_review": false
+    },
+    "University of Pittsburgh School of Medicine / UPMC Children's Hospital": {
+      "university_url": "https://www.pediatrics.pitt.edu/people/division-directors",
+      "hospital_url": "https://www.chp.edu/our-services/aya-medicine/doctors-and-staff",
+      "url": "https://www.pediatrics.pitt.edu/people/division-directors",
+      "notes": "The university page lists the division director, while the hospital page provides a comprehensive list of faculty and staff in the Adolescent and Young Adult Medicine division.",
+      "verified": true,
+      "needs_review": false
+    },
+    "Northwestern University Feinberg School of Medicine / Lurie Children's": {
+      "university_url": "https://www.pediatrics.northwestern.edu/faculty/adolescent.html",
+      "hospital_url": "https://www.luriechildrens.org/en/doctors/?specialty=Adolescent%20%26%20Young%20Adult%20Medicine",
+      "url": "https://www.pediatrics.northwestern.edu/faculty/adolescent.html",
+      "notes": "Both URLs provide comprehensive lists of faculty members in the Adolescent Medicine division, including names and titles.",
+      "verified": true,
+      "needs_review": false
+    },
+    "Indiana University School of Medicine": {
+      "university_url": "https://medicine.iu.edu/pediatrics/specialties/adolescent-medicine/faculty",
+      "hospital_url": null,
+      "url": "https://medicine.iu.edu/pediatrics/specialties/adolescent-medicine/faculty",
+      "notes": "The university faculty directory lists individual faculty members with names and titles. The hospital website provides information about the Adolescent Medicine department but does not have a dedicated faculty directory page.",
+      "verified": true,
+      "needs_review": false
+    },
+    "Columbia University Vagelos College of Physicians and Surgeons": {
+      "university_url": "https://www.pediatrics.columbia.edu/about-us/divisions/child-and-adolescent-health",
+      "hospital_url": null,
+      "url": "https://www.pediatrics.columbia.edu/about-us/divisions/child-and-adolescent-health",
+      "notes": "The university faculty directory for the Division of Child and Adolescent Health lists individual faculty members with names and titles. No separate hospital specialist page was found.",
+      "verified": true,
+      "needs_review": false
+    },
+    "Yale School of Medicine": {
+      "university_url": "https://medicine.yale.edu/pediatrics/sections/general-pediatrics/",
+      "hospital_url": "https://www.yalemedicine.org/departments/adolescent-medicine/",
+      "url": "https://medicine.yale.edu/pediatrics/sections/general-pediatrics/",
+      "notes": "The university page lists Adolescent Medicine under the General Pediatrics section, but does not provide individual faculty names. The hospital page lists two specialists in Adolescent Medicine.",
+      "verified": true,
+      "needs_review": false
+    },
+    "University of Michigan Medical School": {
+      "university_url": "https://medicine.umich.edu/dept/pediatrics/divisions/adolescent-medicine",
+      "hospital_url": "https://www.uofmhealth.org/locations-list/pediatric-adolescent-clinic-c-s-mott-childrens-hospital",
+      "url": "https://medicine.umich.edu/dept/pediatrics/divisions/adolescent-medicine",
+      "notes": "The university page provides information about the Adolescent Medicine division but does not list individual faculty members. The hospital page lists individual faculty members with names and titles.",
+      "verified": true,
+      "needs_review": false
+    },
+    "University of Arizona College of Medicine - Phoenix": {
+      "university_url": "https://phoenixmed.arizona.edu/directory/chulani-veenod",
+      "hospital_url": "https://phoenixchildrens.org/specialties-conditions/adolescent-medicine/meet-your-team",
+      "url": "https://phoenixmed.arizona.edu/directory/chulani-veenod",
+      "notes": "The university faculty directory lists individual profiles, such as Dr. Veenod L. Chulani, but does not provide a comprehensive Adolescent Medicine division faculty list. The hospital's 'Meet Your Team' page offers a detailed list of Adolescent Medicine specialists.",
+      "verified": true,
+      "needs_review": false
+    },
+    "David Geffen School of Medicine at UCLA / Mattel Children's Hospital": {
+      "university_url": null,
+      "hospital_url": null,
+      "url": null,
+      "notes": "No specific faculty directory for the Adolescent Medicine division at David Geffen School of Medicine at UCLA or Mattel Children's Hospital was found. The available information includes a job posting for the division and a profile of Dr. Martin M. Anderson, interim chief of the division.",
+      "verified": false,
+      "needs_review": true
     }
   }
 }

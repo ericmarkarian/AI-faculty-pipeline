@@ -19,6 +19,7 @@ from bs4 import BeautifulSoup
 from openai import OpenAI
 
 from providers.base import ScraperProvider, FacultyRecord
+from providers.utils import clean_url
 
 _TEXT_CHUNK_CHARS = 80000  # max plain-text chars per GPT-4o call
 
@@ -353,7 +354,7 @@ class GenericFacultyScraper(ScraperProvider):
                 record: FacultyRecord = {
                     "full_name":   name,
                     "title":       (item.get("title") or "").strip() or None,
-                    "profile_url": item.get("profile_url") or None,
+                    "profile_url": clean_url(item.get("profile_url")),
                     "school":      school,
                     "subspecialty": None,
                     "email":       None,

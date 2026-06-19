@@ -380,6 +380,7 @@ def agent2_enrich(
     profile_scraper_roles: list | None = None
     profile_email: str | None = None
     profile_education: list = []
+    profile_title: str | None = None
     if profile_url:
         scraper = _get_profile_scraper(profile_url)
         if scraper:
@@ -388,9 +389,12 @@ def agent2_enrich(
                 scraped = profile_data.get("roles") or []
                 profile_email = profile_data.get("email") or None
                 profile_education = profile_data.get("education") or []
+                profile_title = profile_data.get("title") or None
                 if scraped:
                     profile_scraper_roles = scraped
                     print(f"    -> [ProfileScraper] {len(scraped)} roles from profile page (no LLM)")
+                if profile_title:
+                    print(f"    -> [ProfileScraper] Title: {profile_title}")
                 if profile_email:
                     print(f"    -> [ProfileScraper] Email: {profile_email}")
                 if profile_education:
@@ -514,7 +518,9 @@ def agent2_enrich(
 
     return {
         **faculty,
-        "title": faculty.get("title") or extracted_title,
+        # Authoritative profile-page title (e.g. Stanford Profiles) overrides a stale
+        # division-directory listing; fall back to directory, then LLM-discovered title.
+        "title": profile_title or faculty.get("title") or extracted_title,
         "email": faculty.get("email") or profile_email,
         "education": profile_education or [],
         "h_index": h_index,

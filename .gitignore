@@ -9,3 +9,5 @@ tests/fixtures/roles/
 tests/fixtures/nih/
 tests/fixtures/hindex/
 ARCHITECTURE_AUDIT.md
+
+.DS_Store
