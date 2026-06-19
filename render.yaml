@@ -2,10 +2,11 @@ services:
   - type: web
     name: ai-faculty-pipeline
     runtime: python
-    # Install the browser AND its headless-shell for the pinned Playwright version.
-    # `python -m playwright install chromium` (>=1.49) pulls both chromium and
-    # chrome-headless-shell, which `headless=True` requires.
-    buildCommand: pip install -r requirements.txt && python -m playwright install --with-deps chromium
+    # Install the browser + chrome-headless-shell for the pinned Playwright version.
+    # NOTE: no --with-deps — Render's native build can't su to root for apt-get, so
+    # --with-deps fails ("su: Authentication failure"). The browser binary installs fine
+    # without it; if Chromium then crashes on a missing system lib, switch to a Docker runtime.
+    buildCommand: pip install -r requirements.txt && python -m playwright install chromium
     startCommand: gunicorn server:app --bind 0.0.0.0:$PORT --timeout 300 --workers 1 --threads 4
     envVars:
       - key: PYTHON_VERSION
