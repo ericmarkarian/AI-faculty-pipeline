@@ -790,6 +790,8 @@ def run_pipeline_from_records(records, on_enriched=None, on_qc_complete=None, ro
             enriched[idx] = result
             with _print_lock:
                 print(f"  [Progress] {completed}/{n} — {result.get('full_name', 'Unknown')}")
+                if completed == 1 or completed % 10 == 0 or completed == n:
+                    observe.log_mem("enrich_progress", done=completed, total=n)
             if on_enriched:
                 on_enriched(result, completed, n)
 
@@ -823,9 +825,11 @@ def run_pipeline(schools=None, discipline=None, on_enriched=None, on_qc_complete
 
     all_faculty = []
 
-    for school in _schools:
+    observe.log_mem("pipeline_start", schools=len(_schools))
+    for i, school in enumerate(_schools, 1):
         faculty = agent1_scrape(school, discipline=_discipline)
         all_faculty.extend(faculty)
+        observe.log_mem("after_school", school_num=i, of=len(_schools), faculty_so_far=len(all_faculty))
         time.sleep(1)
 
     # Global deduplicate

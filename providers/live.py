@@ -92,9 +92,6 @@ _INSTITUTION_KEYWORDS: dict[str, str] = {
     "Children's National Hospital / George Washington University":                     "george washington",
 }
 
-_CREDENTIAL_SUFFIXES = frozenset(
-    ["MD", "PhD", "DO", "MPH", "MBA", "FAAP", "MS", "DFAACAP", "RD", "RN"]
-)
 
 _LIVE_MODEL = "gpt-4o"
 
@@ -231,8 +228,12 @@ No markdown fences, no explanation — only the JSON object.
 """
 
 def _clean_name_parts(full_name: str) -> list[str]:
-    parts = [p.strip(".,") for p in full_name.split() if p.strip(".,") not in _CREDENTIAL_SUFFIXES]
-    return [p for p in parts if p]
+    # Use the shared comprehensive credential set (_CREDENTIALS, defined below) and an
+    # uppercase compare so the NIH name parse strips the same degrees/suffixes as the
+    # Scopus/h-index parse. Otherwise e.g. "Anna Gloyn, DPhil" parses a last name of
+    # "DPhil" (and "John Smith Jr" a last name of "Jr") and finds no NIH grants.
+    return [p.strip(".,") for p in full_name.split()
+            if p.strip(".,") and p.strip(".,").upper() not in _CREDENTIALS]
 
 
 def _parse_json(raw: str) -> dict:

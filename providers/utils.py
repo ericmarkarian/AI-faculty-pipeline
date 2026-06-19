@@ -36,7 +36,14 @@ _CREDENTIAL_SUFFIXES = frozenset([
 
 # Global semaphore — caps total concurrent Playwright browser instances
 # across both Agent 1 (directory scraping) and Agent 2 (profile scraping).
-_PLAYWRIGHT_SEM = threading.Semaphore(4)
+# Each headless Chromium is ~300-500MB, so keep this low on constrained hosts (Render).
+_PLAYWRIGHT_SEM = threading.Semaphore(2)
+
+# Chromium flags for containers: disable the sandbox (required when running as root in a
+# container) and route shared memory to disk instead of the tiny 64MB /dev/shm — the #1
+# cause of Chromium OOM/crashes on Render. (--single-process cuts memory further but is
+# less stable, so it's intentionally left out.)
+CHROMIUM_LAUNCH_ARGS = ["--no-sandbox", "--disable-dev-shm-usage", "--disable-gpu"]
 
 _REQUESTS_HEADERS = {
     "User-Agent": (
@@ -89,7 +96,7 @@ def fetch_page_html(url: str, timeout: int = 20) -> str:
     with _PLAYWRIGHT_SEM:
         try:
             with sync_playwright() as p:
-                browser = p.chromium.launch(headless=True)
+                browser = p.chromium.launch(headless=True, args=CHROMIUM_LAUNCH_ARGS)
                 page = browser.new_page()
                 try:
                     page.goto(url, timeout=timeout * 1000, wait_until="domcontentloaded")
@@ -153,7 +160,7 @@ def extract_email_via_playwright(url: str, timeout: int = 15) -> str | None:
     with _PLAYWRIGHT_SEM:
         try:
             with sync_playwright() as p:
-                browser = p.chromium.launch(headless=True)
+                browser = p.chromium.launch(headless=True, args=CHROMIUM_LAUNCH_ARGS)
                 page = browser.new_page()
                 captured: list[str] = []
 

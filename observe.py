@@ -127,6 +127,55 @@ def add_cost(call_type: str, input_tokens: int = 0, output_tokens: int = 0) -> f
     return cost
 
 # ─────────────────────────────────────────────
+# MEMORY PROBE (for diagnosing Render OOM)
+# ─────────────────────────────────────────────
+
+def _read_first_int(path: str) -> int | None:
+    try:
+        with open(path) as f:
+            return int(f.read().split()[0])
+    except Exception:
+        return None
+
+
+def rss_mb() -> float | None:
+    """Resident memory of THIS Python process in MB (excludes Chromium child procs)."""
+    try:
+        with open("/proc/self/status") as f:        # Linux (Render)
+            for line in f:
+                if line.startswith("VmRSS:"):
+                    return round(int(line.split()[1]) / 1024, 1)  # kB → MB
+    except Exception:
+        pass
+    try:
+        import resource, sys
+        rss = resource.getrusage(resource.RUSAGE_SELF).ru_maxrss
+        return round(rss / (1024 * 1024 if sys.platform == "darwin" else 1024), 1)  # macOS bytes / Linux kB
+    except Exception:
+        return None
+
+
+def container_mem_mb() -> float | None:
+    """Total cgroup memory (Python + ALL Chromium children) — what Render's OOM killer watches."""
+    for path in ("/sys/fs/cgroup/memory.current",                 # cgroup v2
+                 "/sys/fs/cgroup/memory/memory.usage_in_bytes"):  # cgroup v1
+        v = _read_first_int(path)
+        if v:
+            return round(v / (1024 * 1024), 1)
+    return None
+
+
+def log_mem(stage: str, **extra) -> None:
+    """Emit + print a memory snapshot. container_mb is the total to watch for growth."""
+    rss = rss_mb()
+    cont = container_mem_mb()
+    log("mem", stage=stage, rss_mb=rss, container_mb=cont, **extra)
+    extra_str = " ".join(f"{k}={v}" for k, v in extra.items())
+    print(f"  [MEM] {stage}: python_rss={rss}MB"
+          + (f" container={cont}MB" if cont is not None else "")
+          + (f" | {extra_str}" if extra_str else ""))
+
+# ─────────────────────────────────────────────
 # STRUCTURED LOGGING
 # ─────────────────────────────────────────────
 

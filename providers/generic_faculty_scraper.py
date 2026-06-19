@@ -19,9 +19,13 @@ from bs4 import BeautifulSoup
 from openai import OpenAI
 
 from providers.base import ScraperProvider, FacultyRecord
-from providers.utils import clean_url
+from providers.utils import clean_url, CHROMIUM_LAUNCH_ARGS, _PLAYWRIGHT_SEM
 
-_TEXT_CHUNK_CHARS = 80000  # max plain-text chars per GPT-4o call
+# Keep chunks small: GPT-4o silently under-returns when asked to extract a long
+# roster from one large block (a 75-person page sent whole yields ~8 of them).
+# Smaller chunks are extracted completely, then deduped across chunks below.
+_TEXT_CHUNK_CHARS = 12000  # max plain-text chars per GPT-4o call
+_TEXT_CHUNK_OVERLAP = 1000  # overlap so an entry split across a boundary still appears whole in one chunk
 
 _DISCOVER_PROMPT = """\
 Find the official faculty directory page(s) for the {discipline} division at {school}.
@@ -62,23 +66,26 @@ def _fetch_html_playwright(url: str) -> str:
     network to go idle (JS finishes loading), and return the full page HTML.
     """
     from playwright.sync_api import sync_playwright, TimeoutError as PlaywrightTimeoutError
-    with sync_playwright() as pw:
-        browser = pw.chromium.launch(headless=True)
-        page = browser.new_page(
-            user_agent=(
-                "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
-                "AppleWebKit/537.36 (KHTML, like Gecko) "
-                "Chrome/122.0.0.0 Safari/537.36"
+    # Share the global Playwright semaphore + container flags with Agent 2 so the total
+    # number of concurrent Chromium instances (the main memory cost) is bounded everywhere.
+    with _PLAYWRIGHT_SEM:
+        with sync_playwright() as pw:
+            browser = pw.chromium.launch(headless=True, args=CHROMIUM_LAUNCH_ARGS)
+            page = browser.new_page(
+                user_agent=(
+                    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
+                    "AppleWebKit/537.36 (KHTML, like Gecko) "
+                    "Chrome/122.0.0.0 Safari/537.36"
+                )
             )
-        )
-        try:
-            page.goto(url, wait_until="networkidle", timeout=30000)
-            html = page.content()
-        except PlaywrightTimeoutError:
-            # networkidle timed out — grab whatever loaded
-            html = page.content()
-        finally:
-            browser.close()
+            try:
+                page.goto(url, wait_until="networkidle", timeout=30000)
+                html = page.content()
+            except PlaywrightTimeoutError:
+                # networkidle timed out — grab whatever loaded
+                html = page.content()
+            finally:
+                browser.close()
     return html
 
 
@@ -130,7 +137,8 @@ def _log_cost(model: str, usage) -> float:
 
 def _extract_via_gpt4o(text: str, school: str, discipline: str, client: OpenAI, model: str = "gpt-4o") -> list[dict]:
     """Send plain-text page content to GPT-4o and extract a structured faculty list."""
-    chunks = [text[i:i + _TEXT_CHUNK_CHARS] for i in range(0, len(text), _TEXT_CHUNK_CHARS)]
+    step = max(_TEXT_CHUNK_CHARS - _TEXT_CHUNK_OVERLAP, 1)
+    chunks = [text[i:i + _TEXT_CHUNK_CHARS] for i in range(0, len(text), step)]
     print(f"    [GenericScraper] Extracting from {len(chunks)} text chunk(s)")
 
     all_items: list[dict] = []
