@@ -6,6 +6,7 @@ Usage:
     # then open http://localhost:5050
 """
 import json
+import multiprocessing as mp
 import os
 import queue
 import threading
@@ -16,6 +17,79 @@ from flask import Flask, Response, jsonify, request, send_file
 load_dotenv()
 
 import faculty_search  # noqa: E402 — must come after load_dotenv
+
+
+# ─────────────────────────────────────────────
+# Subprocess-per-run
+# Each pipeline run executes in a FRESH process so all of its memory (Chromium,
+# parsed HTML, glibc fragmentation) is returned to the OS when it exits. The
+# long-lived gunicorn worker stays lean and never accumulates across runs, and an
+# out-of-memory run kills only the child — the server survives and reports it.
+# ─────────────────────────────────────────────
+
+# "spawn" (not fork): forking a threaded gunicorn worker can deadlock on inherited
+# locks. spawn starts a clean interpreter that re-imports the app.
+_MP_CTX = mp.get_context("spawn")
+
+
+def _pipeline_child(kind: str, payload: dict, mpq) -> None:
+    """Entry point that runs in the spawned process; streams results back via mpq."""
+    import faculty_search
+
+    def on_enriched(rec, completed, total):
+        mpq.put({"type": "faculty", "data": rec, "completed": completed, "total": total})
+
+    def on_qc_complete(rec):
+        mpq.put({"type": "qc_update", "data": rec})
+
+    try:
+        if kind == "names":
+            faculty_search.run_pipeline_from_records(
+                payload["records"], discipline=payload["discipline"],
+                on_enriched=on_enriched, on_qc_complete=on_qc_complete,
+                considerations=payload["considerations"],
+            )
+        else:
+            faculty_search.run_pipeline(
+                schools=payload["schools"], discipline=payload["discipline"],
+                on_enriched=on_enriched, on_qc_complete=on_qc_complete,
+                considerations=payload["considerations"],
+            )
+    except Exception as exc:  # noqa: BLE001 — surface any failure to the UI
+        mpq.put({"type": "error", "message": str(exc)})
+    finally:
+        mpq.put({"type": "__child_done__"})
+
+
+def _spawn_and_forward(kind: str, payload: dict, sse_queue: "queue.Queue") -> None:
+    """Run the pipeline in a subprocess; forward its messages to the SSE queue.
+    Always emits exactly one terminal {"type": "done"}; survives child OOM."""
+    proc = None
+    try:
+        mpq = _MP_CTX.Queue()
+        proc = _MP_CTX.Process(target=_pipeline_child, args=(kind, payload, mpq), daemon=True)
+        proc.start()
+        while True:
+            try:
+                msg = mpq.get(timeout=5)
+            except queue.Empty:
+                if not proc.is_alive():
+                    # child died without signaling — almost always an OOM kill
+                    sse_queue.put({"type": "error",
+                                   "message": "pipeline process exited unexpectedly (likely out of memory)"})
+                    break
+                continue
+            if msg.get("type") == "__child_done__":
+                break
+            sse_queue.put(msg)
+    except Exception as exc:  # noqa: BLE001
+        sse_queue.put({"type": "error", "message": f"failed to start pipeline: {exc}"})
+    finally:
+        if proc is not None:
+            proc.join(timeout=20)
+            if proc.is_alive():
+                proc.terminate()
+        sse_queue.put({"type": "done"})
 
 # Map LCME/AOA school names (as displayed in the UI) → keys used in data/faculty_urls.json.
 _SCHOOL_NAME_MAP: dict[str, str] = {
@@ -154,34 +228,15 @@ def start_run():
     considerations = data.get("considerations") or ""
     _run_queue = queue.Queue()
 
-    def on_enriched(faculty_record: dict, completed: int, total: int):
-        _run_queue.put({
-            "type":      "faculty",
-            "data":      faculty_record,
-            "completed": completed,
-            "total":     total,
-        })
-
-    def on_qc_complete(faculty_record: dict):
-        _run_queue.put({
-            "type": "qc_update",
-            "data": faculty_record,
-        })
-
     def run():
         global _pipeline_running
         try:
-            faculty_search.run_pipeline(
-                schools=schools,
-                discipline=discipline,
-                on_enriched=on_enriched,
-                on_qc_complete=on_qc_complete,
-                considerations=considerations,
+            _spawn_and_forward(
+                "search",
+                {"schools": schools, "discipline": discipline, "considerations": considerations},
+                _run_queue,
             )
-        except Exception as exc:
-            _run_queue.put({"type": "error", "message": str(exc)})
         finally:
-            _run_queue.put({"type": "done"})
             _pipeline_running = False
 
     threading.Thread(target=run, daemon=True).start()
@@ -249,34 +304,15 @@ def start_names_run():
 
     _names_run_queue = queue.Queue()
 
-    def on_enriched(faculty_record: dict, completed: int, total: int):
-        _names_run_queue.put({
-            "type":      "faculty",
-            "data":      faculty_record,
-            "completed": completed,
-            "total":     total,
-        })
-
-    def on_qc_complete(faculty_record: dict):
-        _names_run_queue.put({
-            "type": "qc_update",
-            "data": faculty_record,
-        })
-
     def run():
         global _names_pipeline_running
         try:
-            faculty_search.run_pipeline_from_records(
-                records,
-                discipline=discipline,
-                on_enriched=on_enriched,
-                on_qc_complete=on_qc_complete,
-                considerations=considerations,
+            _spawn_and_forward(
+                "names",
+                {"records": records, "discipline": discipline, "considerations": considerations},
+                _names_run_queue,
             )
-        except Exception as exc:
-            _names_run_queue.put({"type": "error", "message": str(exc)})
         finally:
-            _names_run_queue.put({"type": "done"})
             _names_pipeline_running = False
 
     threading.Thread(target=run, daemon=True).start()
