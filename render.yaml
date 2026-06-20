@@ -13,3 +13,8 @@ services:
         value: 3.11.0
       - key: PYTHONUNBUFFERED
         value: "1"
+      # Render's build and runtime are separate filesystems; only the project dir
+      # persists. Install Playwright browsers INTO the project dir (not the default
+      # ~/.cache, which is discarded after build) so the runtime can find them.
+      - key: PLAYWRIGHT_BROWSERS_PATH
+        value: /opt/render/project/src/.playwright
