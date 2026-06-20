@@ -16,6 +16,7 @@ import os
 import json
 import time
 import asyncio
+import gc
 import sqlite3
 import threading
 import requests
@@ -39,7 +40,7 @@ SCOPUS_API_KEY = os.environ.get("SCOPUS_API_KEY")
 
 SCHOOLS = ["Stanford University School of Medicine"]
 DISCIPLINE = "Pediatric Endocrinology"
-MAX_WORKERS = 8  # Max concurrent faculty enrichments
+MAX_WORKERS = int(os.environ.get("MAX_WORKERS", "8"))  # concurrent enrichments; lower to cut peak memory
 
 # CACHE_DB  = "faculty_cache.db"
 # TTL_DAYS  = {"nih": 30, "h_index": 90, "roles": 7}
@@ -755,6 +756,44 @@ def generate_faculty_summary(record: dict) -> str:
 # MAIN PIPELINE
 # ─────────────────────────────────────────────
 
+def _release_memory() -> None:
+    """GC and, on Linux/glibc, return freed memory to the OS via malloc_trim.
+    Called between schools so a school's browser/HTML allocations don't accumulate
+    across the whole run (BeautifulSoup parsing fragments the glibc arena)."""
+    gc.collect()
+    try:
+        import ctypes
+        ctypes.CDLL("libc.so.6").malloc_trim(0)
+    except (OSError, AttributeError):
+        pass  # not glibc/Linux — gc alone
+
+
+def _enrich_records(records, roles_provider, discipline, on_enriched=None,
+                    completed_offset: int = 0, total: int | None = None) -> list:
+    """Agent 2 enrichment for ONE batch of records. Returns the enriched list (no QC).
+    completed_offset/total let callers report global progress across per-school batches."""
+    n = len(records)
+    total = total if total is not None else n
+    enriched = [None] * n
+    _print_lock = threading.Lock()
+    with ThreadPoolExecutor(max_workers=MAX_WORKERS) as executor:
+        futures = {executor.submit(agent2_enrich, f, roles_provider=roles_provider, discipline=discipline): i
+                   for i, f in enumerate(records)}
+        for k, future in enumerate(as_completed(futures), 1):
+            idx = futures[future]
+            result = future.result()
+            result["summary"] = generate_faculty_summary(result)
+            enriched[idx] = result
+            done = completed_offset + k
+            with _print_lock:
+                print(f"  [Progress] {done}/{total} — {result.get('full_name', 'Unknown')}")
+                if done == 1 or done % 10 == 0 or done == total:
+                    observe.log_mem("enrich_progress", done=done, total=total)
+            if on_enriched:
+                on_enriched(result, done, total)
+    return enriched
+
+
 def run_pipeline_from_records(records, on_enriched=None, on_qc_complete=None, roles_provider=None, discipline: str = DISCIPLINE, considerations: str = ""):
     """Run Agent 2 (enrichment) + Agent 3 (QC) on a pre-built list of faculty records.
 
@@ -778,25 +817,9 @@ def run_pipeline_from_records(records, on_enriched=None, on_qc_complete=None, ro
     _enrich_start = time.time()
     n = len(records)
     print(f"\n[Agent 2] Enriching {n} faculty profiles ({MAX_WORKERS} workers)...")
-    enriched = [None] * n
-    _print_lock = threading.Lock()
-
-    with ThreadPoolExecutor(max_workers=MAX_WORKERS) as executor:
-        futures = {executor.submit(agent2_enrich, f, roles_provider=roles_provider, discipline=discipline): i for i, f in enumerate(records)}
-        for completed, future in enumerate(as_completed(futures), 1):
-            idx = futures[future]
-            result = future.result()
-            result["summary"] = generate_faculty_summary(result)
-            enriched[idx] = result
-            with _print_lock:
-                print(f"  [Progress] {completed}/{n} — {result.get('full_name', 'Unknown')}")
-                if completed == 1 or completed % 10 == 0 or completed == n:
-                    observe.log_mem("enrich_progress", done=completed, total=n)
-            if on_enriched:
-                on_enriched(result, completed, n)
-
+    enriched = _enrich_records(records, roles_provider, discipline, on_enriched, 0, n)
     _enrich_elapsed = time.time() - _enrich_start
-    print(f"\n[Timing] Enrichment: {_enrich_elapsed:.1f}s for {n} faculty ({_enrich_elapsed/n:.1f}s avg)")
+    print(f"\n[Timing] Enrichment: {_enrich_elapsed:.1f}s for {n} faculty ({_enrich_elapsed/max(n,1):.1f}s avg)")
 
     final = agent3_qc(enriched)
 
@@ -847,7 +870,32 @@ def run_pipeline(schools=None, discipline=None, on_enriched=None, on_qc_complete
         print("\n[!] No faculty found. Check your API key and try again.")
         return
 
-    final = run_pipeline_from_records(deduped, on_enriched=on_enriched, on_qc_complete=on_qc_complete, roles_provider=_roles_provider, discipline=_discipline, considerations="")
+    # Phase 2: enrich ONE school at a time so peak memory is bounded to a single
+    # school's browsers/HTML regardless of how many schools are run. Heavy transients
+    # are released between schools (gc + malloc_trim); only lightweight records accumulate.
+    from collections import OrderedDict
+    by_school: "OrderedDict[str, list]" = OrderedDict()
+    for f in deduped:
+        by_school.setdefault(f.get("school", ""), []).append(f)
+
+    total = len(deduped)
+    all_enriched: list = []
+    offset = 0
+    _enrich_start = time.time()
+    print(f"\n[Agent 2] Enriching {total} faculty across {len(by_school)} school(s), one school at a time ({MAX_WORKERS} workers)...")
+    for si, (school, recs) in enumerate(by_school.items(), 1):
+        print(f"\n[Agent 2] School {si}/{len(by_school)}: {school} — {len(recs)} faculty")
+        all_enriched.extend(_enrich_records(recs, _roles_provider, _discipline, on_enriched, offset, total))
+        offset += len(recs)
+        _release_memory()
+        observe.log_mem("after_enrich_school", school_num=si, of=len(by_school), done=offset, total=total)
+    print(f"\n[Timing] Enrichment: {time.time() - _enrich_start:.1f}s for {total} faculty")
+
+    # Phase 3: cohort-wide QC (lightweight — URL liveness + string checks, no browsers)
+    final = agent3_qc(all_enriched)
+    if on_qc_complete:
+        for record in final:
+            on_qc_complete(record)
 
     # Flatten nested qc dict into 3 consolidated CSV columns: each is
     # "<confidence> — <why>", with the roles column listing every role + link + why.

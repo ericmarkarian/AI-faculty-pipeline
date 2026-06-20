@@ -1,5 +1,6 @@
 """Shared utilities used across providers."""
 import json
+import os
 import re
 import threading
 from typing import Any
@@ -151,12 +152,25 @@ def extract_email_from_html(html: str) -> str | None:
     return None
 
 
+# The button-click email path launches a second browser + navigates, costing ~tens of
+# seconds per faculty for a payoff it almost never delivers: fetch_page_html already
+# returns fully JS-rendered HTML, so extract_email_from_html catches any mailto in the DOM.
+# Only emails revealed *only* by a literal click need this, so it's OFF by default.
+# Set EMAIL_BUTTON_CLICK=1 to re-enable.
+_EMAIL_BUTTON_CLICK = os.environ.get("EMAIL_BUTTON_CLICK", "").lower() in ("1", "true", "yes")
+
+
 def extract_email_via_playwright(url: str, timeout: int = 15) -> str | None:
     """
     Load the page in Playwright, find any Email button/link, and return
     the email address from its mailto: href — without navigating away.
     Used when the email is behind a JS interaction (e.g. Stanford profiles).
+
+    Disabled by default (see _EMAIL_BUTTON_CLICK) — returns None immediately so the
+    pipeline relies on the fast rendered-HTML mailto scan instead of a second browser.
     """
+    if not _EMAIL_BUTTON_CLICK:
+        return None
     with _PLAYWRIGHT_SEM:
         try:
             with sync_playwright() as p:
