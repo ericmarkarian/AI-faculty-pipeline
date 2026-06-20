@@ -16,7 +16,10 @@ from flask import Flask, Response, jsonify, request, send_file
 
 load_dotenv()
 
-import faculty_search  # noqa: E402 — must come after load_dotenv
+# NOTE: faculty_search is intentionally NOT imported here. It pulls in pandas,
+# playwright, openai and the providers (~180MB) which the parent never uses — all
+# pipeline work happens in the child (_pipeline_child imports it there). Importing it
+# in the long-lived gunicorn worker would double the memory baseline (parent + child).
 
 
 # ─────────────────────────────────────────────
