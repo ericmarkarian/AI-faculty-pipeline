@@ -1387,16 +1387,7 @@ function App() {
   const hasRun = loading || resultsMapRef.current.size > 0 || ran;
   const canRun = selected.length > 0 && specialty && !loading;
 
-  const runSearch = async () => {
-    if (!canRun) return;
-    resultsMapRef.current.clear(); pendingRef.current=[]; animatedNamesRef.current.clear(); setTick(0);
-    setLoading(true); setRan(false); setErrorMsg('');
-    setProgress({done:0,total:0,phase:`Scraping ${selected.length} institution${selected.length>1?'s':''}…`});
-    if(esRef.current){ esRef.current.close(); esRef.current=null; }
-    try {
-      const resp=await fetch('/api/run',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({schools:selected,discipline:specialty,considerations})});
-      if(!resp.ok){ const err=await resp.json(); setErrorMsg(err.error||'Server error'); setLoading(false); return; }
-    } catch(e){ setErrorMsg('Could not reach server. Is server.py running?'); setLoading(false); return; }
+  const attachStream = () => {
     const es=new EventSource('/api/stream'); esRef.current=es;
     es.onmessage=e=>{
       const msg=JSON.parse(e.data);
@@ -1410,6 +1401,34 @@ function App() {
       if(msg.type==='error'){ setErrorMsg(msg.message||'Pipeline error'); es.close(); esRef.current=null; setLoading(false); }
     };
     es.onerror=()=>{ setErrorMsg('Stream connection lost.'); es.close(); esRef.current=null; setLoading(false); };
+  };
+
+  const runSearch = async () => {
+    if (!canRun) return;
+    resultsMapRef.current.clear(); pendingRef.current=[]; animatedNamesRef.current.clear(); setTick(0);
+    setLoading(true); setRan(false); setErrorMsg('');
+    setProgress({done:0,total:0,phase:`Scraping ${selected.length} institution${selected.length>1?'s':''}…`});
+    if(esRef.current){ esRef.current.close(); esRef.current=null; }
+    try {
+      const resp=await fetch('/api/run',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({schools:selected,discipline:specialty,considerations})});
+      if(!resp.ok){ const err=await resp.json(); setErrorMsg(err.error||'Server error'); setLoading(false); return; }
+    } catch(e){ setErrorMsg('Could not reach server. Is server.py running?'); setLoading(false); return; }
+    attachStream();
+  };
+
+  const runDemo = async () => {
+    if (loading) return;
+    setSpecialty('Pediatric Endocrinology');
+    setSelected(["Lucile Packard Children's Hospital Stanford","Boston Children's Hospital","Johns Hopkins Children's Center"]);
+    resultsMapRef.current.clear(); pendingRef.current=[]; animatedNamesRef.current.clear(); setTick(0);
+    setLoading(true); setRan(false); setErrorMsg('');
+    setProgress({done:0,total:0,phase:'Scraping 3 institutions…'});
+    if(esRef.current){ esRef.current.close(); esRef.current=null; }
+    try {
+      const resp=await fetch('/api/run-demo',{method:'POST'});
+      if(!resp.ok){ const err=await resp.json(); setErrorMsg(err.error||'Server error'); setLoading(false); return; }
+    } catch(e){ setErrorMsg('Could not reach server. Is server.py running?'); setLoading(false); return; }
+    attachStream();
   };
 
   /* ── CSV / manual parse helpers ── */
@@ -1797,6 +1816,15 @@ function App() {
                   :'Run Faculty Search'
                 }
               </button>
+
+              {/* Demo replay — streams a pre-captured run through the same UI */}
+              {!loading&&<button onClick={runDemo} style={{
+                width:'100%',marginTop:6,padding:'4px',border:'none',background:'none',
+                color:'var(--ink3)',fontSize:10,cursor:'pointer',letterSpacing:'0.02em',
+              }}
+                onMouseEnter={e=>{ e.currentTarget.style.color='var(--ink2)'; }}
+                onMouseLeave={e=>{ e.currentTarget.style.color='var(--ink3)'; }}
+              >Demo (Pediatric Endocrinology)</button>}
 
               {/* Progress */}
               {loading&&(
