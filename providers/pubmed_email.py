@@ -29,8 +29,9 @@ _EMAIL_RE = re.compile(r"([a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,})")
 _MAX_PAPERS = 8
 
 # NCBI E-utilities rate limit: 3 req/s unauthenticated, 10 req/s with an API key.
+# ("PubMed API key" and "NCBI API key" are the same credential — accept either name.)
 # Enrichment runs on a thread pool, so throttle globally across all threads.
-_NCBI_API_KEY = os.environ.get("NCBI_API_KEY", "")
+_NCBI_API_KEY = os.environ.get("NCBI_API_KEY") or os.environ.get("PUBMED_API_KEY", "")
 _MIN_INTERVAL = 0.11 if _NCBI_API_KEY else 0.35
 _throttle_lock = threading.Lock()
 _last_call = [0.0]
