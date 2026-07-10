@@ -5,7 +5,7 @@
     "profile_url": "https://profiles.stanford.edu/ananta-addala",
     "school": "Stanford University School of Medicine",
     "subspecialty": null,
-    "email": null,
+    "email": "aaddala@stanford.edu",
     "education": [],
     "h_index": 22,
     "h_index_source": "OpenAlex",
@@ -58,7 +58,8 @@
     },
     "qc_nih": "green \u2014 5 grant(s) found at confirmed institution",
     "qc_hindex": "green \u2014 h-index 22 retrieved from OpenAlex",
-    "qc_roles": "green \u2014 [green] society: Co-Chair, Recruitment Engagement Committee @ TrialNet \u2014 https://profiles.stanford.edu/ananta-addala (verified)"
+    "qc_roles": "green \u2014 [green] society: Co-Chair, Recruitment Engagement Committee @ TrialNet \u2014 https://profiles.stanford.edu/ananta-addala (verified)",
+    "email_source": "pubmed"
   },
   {
     "full_name": "Tandy Aye",
@@ -66,7 +67,7 @@
     "profile_url": "https://profiles.stanford.edu/tandy-aye",
     "school": "Stanford University School of Medicine",
     "subspecialty": null,
-    "email": null,
+    "email": "taye@stanford.edu",
     "education": [],
     "h_index": 31,
     "h_index_source": "OpenAlex",
@@ -310,7 +311,8 @@
     },
     "qc_nih": "green \u2014 1 grant(s) found at confirmed institution",
     "qc_hindex": "green \u2014 h-index 31 retrieved from OpenAlex",
-    "qc_roles": "green \u2014 [green] society: Board of Directors @ Pediatric Endocrine Society \u2014 https://profiles.stanford.edu/tandy-aye (verified)\n[green] society: Member @ Pediatric Endocrine Society Workforce Action Team \u2014 https://profiles.stanford.edu/tandy-aye (verified)\n[green] society: Member @ World Professional Association for Transgender Health \u2014 https://profiles.stanford.edu/tandy-aye (verified)\n[green] society: Member @ Council of Pediatric Subspecialties \u2014 https://profiles.stanford.edu/tandy-aye (verified)\n[green] society: Member @ Pediatric Endocrine Society Training Committee \u2014 https://profiles.stanford.edu/tandy-aye (verified)\n[green] society: Member @ American Diabetes Association \u2014 https://profiles.stanford.edu/tandy-aye (verified)\n[green] society: Member @ Pediatric Endocrine Society \u2014 https://profiles.stanford.edu/tandy-aye (verified)\n[green] leadership: Medical Director @ Stanford Pediatric and Adolescent Gender Clinic \u2014 https://profiles.stanford.edu/tandy-aye (verified)\n[green] training: Fellowship Program Director @ Pediatric Endocrinology and Diabetes \u2014 https://profiles.stanford.edu/tandy-aye (verified)\n[green] training: Member @ Association of Pediatric Program Directors \u2014 https://profiles.stanford.edu/tandy-aye (verified)"
+    "qc_roles": "green \u2014 [green] society: Board of Directors @ Pediatric Endocrine Society \u2014 https://profiles.stanford.edu/tandy-aye (verified)\n[green] society: Member @ Pediatric Endocrine Society Workforce Action Team \u2014 https://profiles.stanford.edu/tandy-aye (verified)\n[green] society: Member @ World Professional Association for Transgender Health \u2014 https://profiles.stanford.edu/tandy-aye (verified)\n[green] society: Member @ Council of Pediatric Subspecialties \u2014 https://profiles.stanford.edu/tandy-aye (verified)\n[green] society: Member @ Pediatric Endocrine Society Training Committee \u2014 https://profiles.stanford.edu/tandy-aye (verified)\n[green] society: Member @ American Diabetes Association \u2014 https://profiles.stanford.edu/tandy-aye (verified)\n[green] society: Member @ Pediatric Endocrine Society \u2014 https://profiles.stanford.edu/tandy-aye (verified)\n[green] leadership: Medical Director @ Stanford Pediatric and Adolescent Gender Clinic \u2014 https://profiles.stanford.edu/tandy-aye (verified)\n[green] training: Fellowship Program Director @ Pediatric Endocrinology and Diabetes \u2014 https://profiles.stanford.edu/tandy-aye (verified)\n[green] training: Member @ Association of Pediatric Program Directors \u2014 https://profiles.stanford.edu/tandy-aye (verified)",
+    "email_source": "pubmed"
   },
   {
     "full_name": "Caroline Buckway",
@@ -318,7 +320,7 @@
     "profile_url": "https://profiles.stanford.edu/caroline-buckway",
     "school": "Stanford University School of Medicine",
     "subspecialty": null,
-    "email": null,
+    "email": "cbuckway@yahoo.com",
     "education": [],
     "h_index": 13,
     "h_index_source": "OpenAlex",
@@ -435,7 +437,8 @@
     },
     "qc_nih": "green \u2014 no NIH grants found",
     "qc_hindex": "green \u2014 h-index 13 retrieved from OpenAlex",
-    "qc_roles": "green \u2014 [green] society: Committee Member @ Pediatric Endocrine Society Ethics Special Interest Group \u2014 https://profiles.stanford.edu/caroline-buckway (verified)\n[green] society: Senior Clinical Board Member @ ePocrates \u2014 https://profiles.stanford.edu/caroline-buckway (verified)\n[green] leadership: Pediatric Faculty Mentor @ Pediatric Coaching and Mentoring Program \u2014 https://profiles.stanford.edu/caroline-buckway (verified)\n[green] leadership: Endocrine Rotation Director @ Pediatric Residents \u2014 https://profiles.stanford.edu/caroline-buckway (verified)"
+    "qc_roles": "green \u2014 [green] society: Committee Member @ Pediatric Endocrine Society Ethics Special Interest Group \u2014 https://profiles.stanford.edu/caroline-buckway (verified)\n[green] society: Senior Clinical Board Member @ ePocrates \u2014 https://profiles.stanford.edu/caroline-buckway (verified)\n[green] leadership: Pediatric Faculty Mentor @ Pediatric Coaching and Mentoring Program \u2014 https://profiles.stanford.edu/caroline-buckway (verified)\n[green] leadership: Endocrine Rotation Director @ Pediatric Residents \u2014 https://profiles.stanford.edu/caroline-buckway (verified)",
+    "email_source": "pubmed"
   },
   {
     "full_name": "Christine Erin Lam Brady",
@@ -473,7 +476,8 @@
     },
     "qc_nih": "green \u2014 no NIH grants found",
     "qc_hindex": "green \u2014 h-index 4 retrieved from OpenAlex",
-    "qc_roles": "green \u2014 no qualifying roles found"
+    "qc_roles": "green \u2014 no qualifying roles found",
+    "email_source": null
   },
   {
     "full_name": "Danny Hung-Chieh Chou",
@@ -534,7 +538,8 @@
     },
     "qc_nih": "green \u2014 17 grant(s) found at confirmed institution",
     "qc_hindex": "green \u2014 h-index 22 retrieved from OpenAlex",
-    "qc_roles": "green \u2014 [green] leadership: Affinity Group Leader @ Stanford Diabetes Research Center \u2014 https://profiles.stanford.edu/danny-chou (verified)"
+    "qc_roles": "green \u2014 [green] leadership: Affinity Group Leader @ Stanford Diabetes Research Center \u2014 https://profiles.stanford.edu/danny-chou (verified)",
+    "email_source": "profile"
   },
   {
     "full_name": "Holly Cooper",
@@ -542,7 +547,7 @@
     "profile_url": "https://profiles.stanford.edu/holly-cooper",
     "school": "Stanford University School of Medicine",
     "subspecialty": null,
-    "email": null,
+    "email": "hcooper@stanford.edu",
     "education": [],
     "h_index": 4,
     "h_index_source": "OpenAlex",
@@ -572,7 +577,8 @@
     },
     "qc_nih": "green \u2014 no NIH grants found",
     "qc_hindex": "green \u2014 h-index 4 retrieved from OpenAlex",
-    "qc_roles": "green \u2014 no qualifying roles found"
+    "qc_roles": "green \u2014 no qualifying roles found",
+    "email_source": "pubmed"
   },
   {
     "full_name": "Monica Grover",
@@ -781,7 +787,8 @@
     },
     "qc_nih": "green \u2014 no NIH grants found",
     "qc_hindex": "green \u2014 h-index 13 retrieved from OpenAlex",
-    "qc_roles": "green \u2014 [green] society: Member @ Pediatric Endocrine Society Practice Management Committee \u2014 https://profiles.stanford.edu/monica-grover (verified)\n[green] society: Member @ Pediatric Endocrine Society Bone and Mineral Special Interest Group \u2014 https://profiles.stanford.edu/monica-grover (verified)\n[green] society: Board Certification @ American Board of Pediatrics, Pediatric Endocrinology \u2014 https://profiles.stanford.edu/monica-grover (verified)\n[green] society: Member @ American Society of Bone and Mineral Research \u2014 https://profiles.stanford.edu/monica-grover (verified)\n[green] society: Board Certification @ American Board of Pediatrics \u2014 https://profiles.stanford.edu/monica-grover (verified)\n[green] society: Member @ Pediatric Endocrine Society \u2014 https://profiles.stanford.edu/monica-grover (verified)\n[green] leadership: Clinical Associate Professor @ Department of Pediatrics, Division of Pediatric Endocrinology \u2014 https://profiles.stanford.edu/monica-grover (verified)\n[green] leadership: Co-Director @ Bone Health Clinic at Stanford Children's Health \u2014 https://profiles.stanford.edu/monica-grover (verified)"
+    "qc_roles": "green \u2014 [green] society: Member @ Pediatric Endocrine Society Practice Management Committee \u2014 https://profiles.stanford.edu/monica-grover (verified)\n[green] society: Member @ Pediatric Endocrine Society Bone and Mineral Special Interest Group \u2014 https://profiles.stanford.edu/monica-grover (verified)\n[green] society: Board Certification @ American Board of Pediatrics, Pediatric Endocrinology \u2014 https://profiles.stanford.edu/monica-grover (verified)\n[green] society: Member @ American Society of Bone and Mineral Research \u2014 https://profiles.stanford.edu/monica-grover (verified)\n[green] society: Board Certification @ American Board of Pediatrics \u2014 https://profiles.stanford.edu/monica-grover (verified)\n[green] society: Member @ Pediatric Endocrine Society \u2014 https://profiles.stanford.edu/monica-grover (verified)\n[green] leadership: Clinical Associate Professor @ Department of Pediatrics, Division of Pediatric Endocrinology \u2014 https://profiles.stanford.edu/monica-grover (verified)\n[green] leadership: Co-Director @ Bone Health Clinic at Stanford Children's Health \u2014 https://profiles.stanford.edu/monica-grover (verified)",
+    "email_source": null
   },
   {
     "full_name": "Korey Hood",
@@ -842,7 +849,8 @@
     },
     "qc_nih": "green \u2014 20 grant(s) found at confirmed institution",
     "qc_hindex": "green \u2014 h-index 64 retrieved from Scopus",
-    "qc_roles": "green \u2014 [green] leadership: Member @ Stanford Diabetes Research Center \u2014 https://profiles.stanford.edu/korey-hood (verified)"
+    "qc_roles": "green \u2014 [green] leadership: Member @ Stanford Diabetes Research Center \u2014 https://profiles.stanford.edu/korey-hood (verified)",
+    "email_source": null
   },
   {
     "full_name": "Jennifer Ikle",
@@ -945,7 +953,8 @@
     },
     "qc_nih": "green \u2014 1 grant(s) found at confirmed institution",
     "qc_hindex": "yellow \u2014 h-index not found \u2014 manual verification may be needed",
-    "qc_roles": "green \u2014 [green] society: Member @ American Diabetes Association \u2014 https://profiles.stanford.edu/jennifer-ikle (verified)\n[green] society: Member @ Pediatric Endocrine Society \u2014 https://profiles.stanford.edu/jennifer-ikle (verified)\n[green] society: Member @ American Academy of Pediatrics \u2014 https://profiles.stanford.edu/jennifer-ikle (verified)"
+    "qc_roles": "green \u2014 [green] society: Member @ American Diabetes Association \u2014 https://profiles.stanford.edu/jennifer-ikle (verified)\n[green] society: Member @ Pediatric Endocrine Society \u2014 https://profiles.stanford.edu/jennifer-ikle (verified)\n[green] society: Member @ American Academy of Pediatrics \u2014 https://profiles.stanford.edu/jennifer-ikle (verified)",
+    "email_source": null
   },
   {
     "full_name": "Rajiv B Kumar",
@@ -983,7 +992,8 @@
     },
     "qc_nih": "green \u2014 no NIH grants found",
     "qc_hindex": "yellow \u2014 h-index not found \u2014 manual verification may be needed",
-    "qc_roles": "green \u2014 no qualifying roles found"
+    "qc_roles": "green \u2014 no qualifying roles found",
+    "email_source": null
   },
   {
     "full_name": "Ming Yeh Lee",
@@ -1024,7 +1034,8 @@
     },
     "qc_nih": "yellow \u2014 2 grant(s) found but institution not confirmed \u2014 may be from a previous institution; human review recommended",
     "qc_hindex": "green \u2014 h-index 46 retrieved from OpenAlex",
-    "qc_roles": "green \u2014 no qualifying roles found"
+    "qc_roles": "green \u2014 no qualifying roles found",
+    "email_source": null
   },
   {
     "full_name": "Alondra Loyola",
@@ -1062,7 +1073,8 @@
     },
     "qc_nih": "green \u2014 no NIH grants found",
     "qc_hindex": "green \u2014 h-index 2 retrieved from OpenAlex",
-    "qc_roles": "green \u2014 no qualifying roles found"
+    "qc_roles": "green \u2014 no qualifying roles found",
+    "email_source": null
   },
   {
     "full_name": "Anniek Frederike Lubberding",
@@ -1100,7 +1112,8 @@
     },
     "qc_nih": "green \u2014 no NIH grants found",
     "qc_hindex": "green \u2014 h-index 11 retrieved from OpenAlex",
-    "qc_roles": "green \u2014 no qualifying roles found"
+    "qc_roles": "green \u2014 no qualifying roles found",
+    "email_source": null
   },
   {
     "full_name": "Tim Luehrs",
@@ -1138,7 +1151,8 @@
     },
     "qc_nih": "green \u2014 no NIH grants found",
     "qc_hindex": "green \u2014 h-index 0 retrieved from OpenAlex",
-    "qc_roles": "green \u2014 no qualifying roles found"
+    "qc_roles": "green \u2014 no qualifying roles found",
+    "email_source": null
   },
   {
     "full_name": "David Maahs",
@@ -1242,7 +1256,8 @@
     },
     "qc_nih": "green \u2014 40 grant(s) found at confirmed institution",
     "qc_hindex": "green \u2014 h-index 82 retrieved from Scopus",
-    "qc_roles": "green \u2014 [green] society: Faculty Fellow @ Center for Innovation in Global Health, Stanford University \u2014 https://profiles.stanford.edu/david-maahs (verified)\n[green] leadership: Associate Dean for Academic Affairs @ Stanford School of Medicine \u2014 https://profiles.stanford.edu/david-maahs (verified)\n[green] leadership: Associate Chair for Academic Affairs @ Department of Pediatrics, Stanford University \u2014 https://profiles.stanford.edu/david-maahs (verified)"
+    "qc_roles": "green \u2014 [green] society: Faculty Fellow @ Center for Innovation in Global Health, Stanford University \u2014 https://profiles.stanford.edu/david-maahs (verified)\n[green] leadership: Associate Dean for Academic Affairs @ Stanford School of Medicine \u2014 https://profiles.stanford.edu/david-maahs (verified)\n[green] leadership: Associate Chair for Academic Affairs @ Department of Pediatrics, Stanford University \u2014 https://profiles.stanford.edu/david-maahs (verified)",
+    "email_source": "profile"
   },
   {
     "full_name": "Diana Naranjo",
@@ -1250,7 +1265,7 @@
     "profile_url": "https://profiles.stanford.edu/diana-naranjo",
     "school": "Stanford University School of Medicine",
     "subspecialty": null,
-    "email": null,
+    "email": "dnaranjo@stanford.edu",
     "education": [],
     "h_index": 26,
     "h_index_source": "Scopus",
@@ -1388,7 +1403,8 @@
     },
     "qc_nih": "green \u2014 no NIH grants found",
     "qc_hindex": "green \u2014 h-index 26 retrieved from Scopus",
-    "qc_roles": "green \u2014 [green] society: Publication & Presentation Committee Member @ Cystic Fibrosis Foundation's Success with Therapies Research Consortium \u2014 https://profiles.stanford.edu/diana-naranjo (verified)\n[green] society: Clinical Advisory Committee @ College Diabetes Network \u2014 https://profiles.stanford.edu/diana-naranjo (verified)\n[green] society: Diabetes Health Sense Task Group Member @ National Diabetes Education Program \u2014 https://profiles.stanford.edu/diana-naranjo (verified)\n[green] society: Advisory Board Member @ CarbDM \u2014 https://profiles.stanford.edu/diana-naranjo (verified)\n[green] leadership: Member @ Stanford Diabetes Research Center \u2014 https://profiles.stanford.edu/diana-naranjo (verified)"
+    "qc_roles": "green \u2014 [green] society: Publication & Presentation Committee Member @ Cystic Fibrosis Foundation's Success with Therapies Research Consortium \u2014 https://profiles.stanford.edu/diana-naranjo (verified)\n[green] society: Clinical Advisory Committee @ College Diabetes Network \u2014 https://profiles.stanford.edu/diana-naranjo (verified)\n[green] society: Diabetes Health Sense Task Group Member @ National Diabetes Education Program \u2014 https://profiles.stanford.edu/diana-naranjo (verified)\n[green] society: Advisory Board Member @ CarbDM \u2014 https://profiles.stanford.edu/diana-naranjo (verified)\n[green] leadership: Member @ Stanford Diabetes Research Center \u2014 https://profiles.stanford.edu/diana-naranjo (verified)",
+    "email_source": "pubmed"
   },
   {
     "full_name": "E. Kirk Neely",
@@ -1396,7 +1412,7 @@
     "profile_url": "https://profiles.stanford.edu/edward-neely",
     "school": "Stanford University School of Medicine",
     "subspecialty": null,
-    "email": null,
+    "email": "neely@stanford.edu",
     "education": [],
     "h_index": 28,
     "h_index_source": "Scopus",
@@ -1429,7 +1445,8 @@
     },
     "qc_nih": "green \u2014 7 grant(s) found at confirmed institution",
     "qc_hindex": "green \u2014 h-index 28 retrieved from Scopus",
-    "qc_roles": "green \u2014 no qualifying roles found"
+    "qc_roles": "green \u2014 no qualifying roles found",
+    "email_source": "pubmed"
   },
   {
     "full_name": "Jennifer Ni",
@@ -1470,7 +1487,8 @@
     },
     "qc_nih": "yellow \u2014 5 grant(s) found but institution not confirmed \u2014 may be from a previous institution; human review recommended",
     "qc_hindex": "green \u2014 h-index 1 retrieved from Scopus",
-    "qc_roles": "green \u2014 no qualifying roles found"
+    "qc_roles": "green \u2014 no qualifying roles found",
+    "email_source": null
   },
   {
     "full_name": "Priya Prahalad",
@@ -1531,7 +1549,8 @@
     },
     "qc_nih": "green \u2014 no NIH grants found",
     "qc_hindex": "green \u2014 h-index 37 retrieved from Scopus",
-    "qc_roles": "green \u2014 [green] leadership: Medical Director @ Clinical Informatics \u2014 https://profiles.stanford.edu/priya-prahalad (verified)"
+    "qc_roles": "green \u2014 [green] leadership: Medical Director @ Clinical Informatics \u2014 https://profiles.stanford.edu/priya-prahalad (verified)",
+    "email_source": null
   },
   {
     "full_name": "David Scheinker",
@@ -1698,7 +1717,8 @@
     },
     "qc_nih": "green \u2014 no NIH grants found",
     "qc_hindex": "green \u2014 h-index 23 retrieved from OpenAlex",
-    "qc_roles": "green \u2014 [green] society: Advisor @ Carta Healthcare \u2014 https://profiles.stanford.edu/david-scheinker (verified)\n[green] leadership: Executive Director of Systems Design and Collaborative Research @ Lucile Packard Children's Hospital Stanford \u2014 https://profiles.stanford.edu/david-scheinker (verified)\n[green] leadership: Founder and Director @ SURF Stanford Medicine \u2014 https://profiles.stanford.edu/david-scheinker (verified)\n[green] leadership: Faculty @ Clinical Excellence Research Center (CERC) \u2014 https://profiles.stanford.edu/david-scheinker (verified)\n[green] leadership: Faculty @ Master of Science in Clinical Informatics Management (MCiM) \u2014 https://profiles.stanford.edu/david-scheinker (verified)\n[green] leadership: Faculty @ Clinical Excellence Leadership Training (CELT) \u2014 https://profiles.stanford.edu/david-scheinker (verified)"
+    "qc_roles": "green \u2014 [green] society: Advisor @ Carta Healthcare \u2014 https://profiles.stanford.edu/david-scheinker (verified)\n[green] leadership: Executive Director of Systems Design and Collaborative Research @ Lucile Packard Children's Hospital Stanford \u2014 https://profiles.stanford.edu/david-scheinker (verified)\n[green] leadership: Founder and Director @ SURF Stanford Medicine \u2014 https://profiles.stanford.edu/david-scheinker (verified)\n[green] leadership: Faculty @ Clinical Excellence Research Center (CERC) \u2014 https://profiles.stanford.edu/david-scheinker (verified)\n[green] leadership: Faculty @ Master of Science in Clinical Informatics Management (MCiM) \u2014 https://profiles.stanford.edu/david-scheinker (verified)\n[green] leadership: Faculty @ Clinical Excellence Leadership Training (CELT) \u2014 https://profiles.stanford.edu/david-scheinker (verified)",
+    "email_source": null
   },
   {
     "full_name": "Hilary Seeley",
@@ -1759,7 +1779,8 @@
     },
     "qc_nih": "green \u2014 no NIH grants found",
     "qc_hindex": "green \u2014 h-index 4 retrieved from Scopus",
-    "qc_roles": "green \u2014 [green] leadership: Medical Co-Director @ Variations in Sex Traits and Anatomy (VISTA) Clinic \u2014 https://www.stanfordchildrens.org/en/services/vista/careteam.html (verified)"
+    "qc_roles": "green \u2014 [green] leadership: Medical Co-Director @ Variations in Sex Traits and Anatomy (VISTA) Clinic \u2014 https://www.stanfordchildrens.org/en/services/vista/careteam.html (verified)",
+    "email_source": null
   },
   {
     "full_name": "Rachel Sewell",
@@ -1797,7 +1818,8 @@
     },
     "qc_nih": "green \u2014 no NIH grants found",
     "qc_hindex": "green \u2014 h-index 4 retrieved from OpenAlex",
-    "qc_roles": "green \u2014 no qualifying roles found"
+    "qc_roles": "green \u2014 no qualifying roles found",
+    "email_source": null
   },
   {
     "full_name": "Sejal Shah",
@@ -1858,7 +1880,8 @@
     },
     "qc_nih": "green \u2014 no NIH grants found",
     "qc_hindex": "green \u2014 h-index 4 retrieved from Scopus",
-    "qc_roles": "green \u2014 [green] leadership: Clinical Instructor/Clinician Educator @ Pediatric Endocrinology & Diabetes \u2014 https://profiles.stanford.edu/sejal-shah (verified)"
+    "qc_roles": "green \u2014 [green] leadership: Clinical Instructor/Clinician Educator @ Pediatric Endocrinology & Diabetes \u2014 https://profiles.stanford.edu/sejal-shah (verified)",
+    "email_source": null
   },
   {
     "full_name": "Diane Stafford",
@@ -1963,7 +1986,8 @@
     },
     "qc_nih": "green \u2014 no NIH grants found",
     "qc_hindex": "green \u2014 h-index 15 retrieved from Scopus",
-    "qc_roles": "green \u2014 [green] society: Chair @ Executive Committee, PWS CLIC (Clinical Investigation Collaborative) \u2014 https://profiles.stanford.edu/diane-stafford (verified)\n[green] leadership: Associate Chief @ Division of Endocrinology and Diabetes \u2014 https://profiles.stanford.edu/diane-stafford (verified)\n[green] training: Associate Program Director @ Division of Endocrinology and Diabetes \u2014 https://profiles.stanford.edu/diane-stafford (verified)"
+    "qc_roles": "green \u2014 [green] society: Chair @ Executive Committee, PWS CLIC (Clinical Investigation Collaborative) \u2014 https://profiles.stanford.edu/diane-stafford (verified)\n[green] leadership: Associate Chief @ Division of Endocrinology and Diabetes \u2014 https://profiles.stanford.edu/diane-stafford (verified)\n[green] training: Associate Program Director @ Division of Endocrinology and Diabetes \u2014 https://profiles.stanford.edu/diane-stafford (verified)",
+    "email_source": null
   },
   {
     "full_name": "Luisa Fernanda Valenzuela Riveros",
@@ -2024,7 +2048,8 @@
     },
     "qc_nih": "green \u2014 no NIH grants found",
     "qc_hindex": "green \u2014 h-index 0 retrieved from Scopus",
-    "qc_roles": "green \u2014 [green] training: Associate Program Director @ Stanford University Pediatric Endocrinology Fellowship \u2014 https://www.appd.org/wp-content/uploads/2026/05/Endo-Program-Slides-as-of-5.12.26.pdf (verified)"
+    "qc_roles": "green \u2014 [green] training: Associate Program Director @ Stanford University Pediatric Endocrinology Fellowship \u2014 https://www.appd.org/wp-content/uploads/2026/05/Endo-Program-Slides-as-of-5.12.26.pdf (verified)",
+    "email_source": null
   },
   {
     "full_name": "Jessie Wong",
@@ -2065,7 +2090,8 @@
     },
     "qc_nih": "green \u2014 7 grant(s) found at confirmed institution",
     "qc_hindex": "green \u2014 h-index 27 retrieved from Scopus",
-    "qc_roles": "green \u2014 no qualifying roles found"
+    "qc_roles": "green \u2014 no qualifying roles found",
+    "email_source": null
   },
   {
     "full_name": "Sudha Biddinger",
@@ -2126,7 +2152,8 @@
     },
     "qc_nih": "green \u2014 46 grant(s) found at confirmed institution",
     "qc_hindex": "green \u2014 h-index 34 retrieved from OpenAlex",
-    "qc_roles": "yellow \u2014 [yellow] leadership: Principal Member @ Harvard Digestive Diseases Center (HDDC) \u2014 https://hddc.childrenshospital.org/our-research/epithelial-cell-developmental-and-stem-cell-biology/ (source URL unverified)"
+    "qc_roles": "yellow \u2014 [yellow] leadership: Principal Member @ Harvard Digestive Diseases Center (HDDC) \u2014 https://hddc.childrenshospital.org/our-research/epithelial-cell-developmental-and-stem-cell-biology/ (source URL unverified)",
+    "email_source": "profile"
   },
   {
     "full_name": "David Breault",
@@ -2134,7 +2161,7 @@
     "profile_url": "https://research.childrenshospital.org/researchers/david-breault",
     "school": "Harvard Medical School",
     "subspecialty": null,
-    "email": null,
+    "email": "david.breault@childrens.harvard.edu",
     "education": [
       {
         "type": "Medical School",
@@ -2247,7 +2274,8 @@
     },
     "qc_nih": "green \u2014 no NIH grants found",
     "qc_hindex": "green \u2014 h-index 44 retrieved from OpenAlex",
-    "qc_roles": "yellow \u2014 [green] leadership: Associate Chief, Division of Endocrinology @ Boston Children's Hospital \u2014 https://research.childrenshospital.org/researchers/david-breault (verified)\n[green] leadership: Principal Faculty @ Harvard Stem Cell Institute \u2014 https://hscrb.harvard.edu/people/david-breault/ (verified)\n[yellow] leadership: Executive Committee Member @ Harvard Digestive Disease Center \u2014 https://research.bidmc.org/hddc/executive-committee (role text not found in evidence)"
+    "qc_roles": "yellow \u2014 [green] leadership: Associate Chief, Division of Endocrinology @ Boston Children's Hospital \u2014 https://research.childrenshospital.org/researchers/david-breault (verified)\n[green] leadership: Principal Faculty @ Harvard Stem Cell Institute \u2014 https://hscrb.harvard.edu/people/david-breault/ (verified)\n[yellow] leadership: Executive Committee Member @ Harvard Digestive Disease Center \u2014 https://research.bidmc.org/hddc/executive-committee (role text not found in evidence)",
+    "email_source": "pubmed"
   },
   {
     "full_name": "Katharine Garvey",
@@ -2353,7 +2381,8 @@
     },
     "qc_nih": "green \u2014 no NIH grants found",
     "qc_hindex": "green \u2014 h-index 22 retrieved from OpenAlex",
-    "qc_roles": "green \u2014 [green] leadership: Director, Diabetes Program @ Boston Children's Hospital \u2014 https://www.childrenshospital.org/index.php/podcasts/how-diabetes-managed-children (verified)\n[green] leadership: Clinical Chief for Diabetes @ Boston Children's Hospital \u2014 https://www.childrenshospital.org/index.php/podcasts/how-diabetes-managed-children (verified)"
+    "qc_roles": "green \u2014 [green] leadership: Director, Diabetes Program @ Boston Children's Hospital \u2014 https://www.childrenshospital.org/index.php/podcasts/how-diabetes-managed-children (verified)\n[green] leadership: Clinical Chief for Diabetes @ Boston Children's Hospital \u2014 https://www.childrenshospital.org/index.php/podcasts/how-diabetes-managed-children (verified)",
+    "email_source": "profile"
   },
   {
     "full_name": "Christina Jacobsen",
@@ -2432,7 +2461,8 @@
     },
     "qc_nih": "green \u2014 no NIH grants found",
     "qc_hindex": "green \u2014 h-index 22 retrieved from OpenAlex",
-    "qc_roles": "green \u2014 [green] leadership: Executive Director, Skeletal Health Center @ Boston Children's Hospital \u2014 https://www.childrenshospital.org/directory/christina-jacobsen (verified)"
+    "qc_roles": "green \u2014 [green] leadership: Executive Director, Skeletal Health Center @ Boston Children's Hospital \u2014 https://www.childrenshospital.org/directory/christina-jacobsen (verified)",
+    "email_source": "profile"
   },
   {
     "full_name": "Nada Kalaany",
@@ -2569,7 +2599,8 @@
     },
     "qc_nih": "green \u2014 no NIH grants found",
     "qc_hindex": "yellow \u2014 h-index not found \u2014 manual verification may be needed",
-    "qc_roles": "green \u2014 [green] leadership: Associate in Medicine @ Boston Children's Hospital \u2014 https://research.childrenshospital.org/researchers/nada-kalaany (verified)\n[green] leadership: Associate Member @ Broad Institute of MIT and Harvard \u2014 https://research.childrenshospital.org/researchers/nada-kalaany (verified)\n[green] leadership: Member @ Dana-Farber/Harvard Cancer Center \u2014 https://research.childrenshospital.org/researchers/nada-kalaany (verified)\n[green] leadership: Member @ Harvard BBS Graduate Program \u2014 https://www.kalaanylab.org/lab-members.html (verified)"
+    "qc_roles": "green \u2014 [green] leadership: Associate in Medicine @ Boston Children's Hospital \u2014 https://research.childrenshospital.org/researchers/nada-kalaany (verified)\n[green] leadership: Associate Member @ Broad Institute of MIT and Harvard \u2014 https://research.childrenshospital.org/researchers/nada-kalaany (verified)\n[green] leadership: Member @ Dana-Farber/Harvard Cancer Center \u2014 https://research.childrenshospital.org/researchers/nada-kalaany (verified)\n[green] leadership: Member @ Harvard BBS Graduate Program \u2014 https://www.kalaanylab.org/lab-members.html (verified)",
+    "email_source": "profile"
   },
   {
     "full_name": "Umut Ozcan",
@@ -2577,7 +2608,7 @@
     "profile_url": "https://research.childrenshospital.org/researchers/umut-ozcan",
     "school": "Harvard Medical School",
     "subspecialty": null,
-    "email": null,
+    "email": "umut.ozcan@childrens.harvard.edu",
     "education": [
       {
         "type": "Medical School",
@@ -2646,7 +2677,8 @@
     },
     "qc_nih": "green \u2014 no NIH grants found",
     "qc_hindex": "yellow \u2014 h-index not found \u2014 manual verification may be needed",
-    "qc_roles": "green \u2014 [green] leadership: Principal Investigator, Ozcan Laboratory @ Boston Children's Hospital \u2014 https://research.childrenshospital.org/researchers/umut-ozcan (verified)"
+    "qc_roles": "green \u2014 [green] leadership: Principal Investigator, Ozcan Laboratory @ Boston Children's Hospital \u2014 https://research.childrenshospital.org/researchers/umut-ozcan (verified)",
+    "email_source": "pubmed"
   },
   {
     "full_name": "Sheela N. Magge",
@@ -2654,7 +2686,7 @@
     "profile_url": "https://profiles.hopkinsmedicine.org/provider/Sheela-Natesh-Magge/2700667",
     "school": "Johns Hopkins School of Medicine",
     "subspecialty": null,
-    "email": null,
+    "email": "smagge3@jhmi.edu",
     "education": [
       {
         "type": "Medical School",
@@ -2816,7 +2848,8 @@
     },
     "qc_nih": "green \u2014 24 grant(s) found at confirmed institution",
     "qc_hindex": "green \u2014 h-index 32 retrieved from OpenAlex",
-    "qc_roles": "green \u2014 [green] society: Active member @ National Pediatric Endocrine Society \u2014 https://profiles.hopkinsmedicine.org/provider/Sheela-Natesh-Magge/2700667 (verified)\n[green] society: Standing member @ National Institutes of Health (NIH) Human Studies of Diabetes and Obesity Study Section \u2014 https://profiles.hopkinsmedicine.org/provider/Sheela-Natesh-Magge/2700667 (verified)\n[green] society: Committee member @ American Academy of Pediatrics Committee on Nutrition \u2014 https://profiles.hopkinsmedicine.org/provider/Sheela-Natesh-Magge/2700667 (verified)\n[green] leadership: Director, Division of Pediatric Endocrinology @ Johns Hopkins Children\u2019s Center \u2014 https://profiles.hopkinsmedicine.org/provider/Sheela-Natesh-Magge/2700667 (verified)\n[green] leadership: Lawson Wilkins Chair of Pediatric Endocrinology @ Johns Hopkins Children\u2019s Center \u2014 https://profiles.hopkinsmedicine.org/provider/Sheela-Natesh-Magge/2700667 (verified)"
+    "qc_roles": "green \u2014 [green] society: Active member @ National Pediatric Endocrine Society \u2014 https://profiles.hopkinsmedicine.org/provider/Sheela-Natesh-Magge/2700667 (verified)\n[green] society: Standing member @ National Institutes of Health (NIH) Human Studies of Diabetes and Obesity Study Section \u2014 https://profiles.hopkinsmedicine.org/provider/Sheela-Natesh-Magge/2700667 (verified)\n[green] society: Committee member @ American Academy of Pediatrics Committee on Nutrition \u2014 https://profiles.hopkinsmedicine.org/provider/Sheela-Natesh-Magge/2700667 (verified)\n[green] leadership: Director, Division of Pediatric Endocrinology @ Johns Hopkins Children\u2019s Center \u2014 https://profiles.hopkinsmedicine.org/provider/Sheela-Natesh-Magge/2700667 (verified)\n[green] leadership: Lawson Wilkins Chair of Pediatric Endocrinology @ Johns Hopkins Children\u2019s Center \u2014 https://profiles.hopkinsmedicine.org/provider/Sheela-Natesh-Magge/2700667 (verified)",
+    "email_source": "pubmed"
   },
   {
     "full_name": "Yasmin Akhtar",
@@ -2872,7 +2905,8 @@
     },
     "qc_nih": "green \u2014 no NIH grants found",
     "qc_hindex": "green \u2014 h-index 4 retrieved from OpenAlex",
-    "qc_roles": "green \u2014 no qualifying roles found"
+    "qc_roles": "green \u2014 no qualifying roles found",
+    "email_source": null
   },
   {
     "full_name": "Kristin Marie Arcara",
@@ -2973,7 +3007,8 @@
     },
     "qc_nih": "green \u2014 no NIH grants found",
     "qc_hindex": "green \u2014 h-index 4 retrieved from Scopus",
-    "qc_roles": "green \u2014 [green] society: Member @ Mt. Washington Pediatric Hospital\u2019s multidisciplinary Prader Willi Syndrome clinic \u2014 https://profiles.hopkinsmedicine.org/provider/Kristin-Marie-Arcara/2701948 (verified)\n[green] leadership: Head @ Mt. Washington Pediatric Hospital \u2014 https://profiles.hopkinsmedicine.org/provider/Kristin-Marie-Arcara/2701948 (verified)"
+    "qc_roles": "green \u2014 [green] society: Member @ Mt. Washington Pediatric Hospital\u2019s multidisciplinary Prader Willi Syndrome clinic \u2014 https://profiles.hopkinsmedicine.org/provider/Kristin-Marie-Arcara/2701948 (verified)\n[green] leadership: Head @ Mt. Washington Pediatric Hospital \u2014 https://profiles.hopkinsmedicine.org/provider/Kristin-Marie-Arcara/2701948 (verified)",
+    "email_source": null
   },
   {
     "full_name": "Sonum Bharill",
@@ -3029,7 +3064,8 @@
     },
     "qc_nih": "green \u2014 no NIH grants found",
     "qc_hindex": "green \u2014 h-index 3 retrieved from OpenAlex",
-    "qc_roles": "green \u2014 no qualifying roles found"
+    "qc_roles": "green \u2014 no qualifying roles found",
+    "email_source": null
   },
   {
     "full_name": "Scott Blackman",
@@ -3174,7 +3210,8 @@
     },
     "qc_nih": "green \u2014 7 grant(s) found at confirmed institution",
     "qc_hindex": "green \u2014 h-index 38 retrieved from OpenAlex",
-    "qc_roles": "green \u2014 [green] editorial: Editorial board @ Journal of Cystic Fibrosis \u2014 https://profiles.hopkinsmedicine.org/provider/Scott-Michael-Blackman/2706845 (verified)\n[green] society: Member @ Society for Pediatric Research \u2014 https://profiles.hopkinsmedicine.org/provider/Scott-Michael-Blackman/2706845 (verified)\n[green] leadership: Program Planning Committee @ North American CF Conference \u2014 https://profiles.hopkinsmedicine.org/provider/Scott-Michael-Blackman/2706845 (verified)\n[green] training: Mentor @ EnVision \u2014 https://profiles.hopkinsmedicine.org/provider/Scott-Michael-Blackman/2706845 (verified)"
+    "qc_roles": "green \u2014 [green] editorial: Editorial board @ Journal of Cystic Fibrosis \u2014 https://profiles.hopkinsmedicine.org/provider/Scott-Michael-Blackman/2706845 (verified)\n[green] society: Member @ Society for Pediatric Research \u2014 https://profiles.hopkinsmedicine.org/provider/Scott-Michael-Blackman/2706845 (verified)\n[green] leadership: Program Planning Committee @ North American CF Conference \u2014 https://profiles.hopkinsmedicine.org/provider/Scott-Michael-Blackman/2706845 (verified)\n[green] training: Mentor @ EnVision \u2014 https://profiles.hopkinsmedicine.org/provider/Scott-Michael-Blackman/2706845 (verified)",
+    "email_source": null
   },
   {
     "full_name": "David W. Cooke",
@@ -3338,7 +3375,8 @@
     },
     "qc_nih": "green \u2014 10 grant(s) found at confirmed institution",
     "qc_hindex": "green \u2014 h-index 21 retrieved from Scopus",
-    "qc_roles": "green \u2014 [green] society: Executive Board Member @ Human Growth Foundation \u2014 https://profiles.hopkinsmedicine.org/provider/David-William-Cooke/2701248 (verified)\n[green] society: Board of Directors @ Human Growth Foundation \u2014 https://profiles.hopkinsmedicine.org/provider/David-William-Cooke/2701248 (verified)\n[green] society: Ad Hoc Grant Reviewer @ New Foundation for Diabetes \u2014 https://profiles.hopkinsmedicine.org/provider/David-William-Cooke/2701248 (verified)\n[green] leadership: Director, Pediatric Endocrinology Fellowship Training Program @ Johns Hopkins \u2014 https://profiles.hopkinsmedicine.org/provider/David-William-Cooke/2701248 (verified)\n[green] leadership: Clinical Director, Pediatric Endocrinology @ Johns Hopkins \u2014 https://profiles.hopkinsmedicine.org/provider/David-William-Cooke/2701248 (verified)"
+    "qc_roles": "green \u2014 [green] society: Executive Board Member @ Human Growth Foundation \u2014 https://profiles.hopkinsmedicine.org/provider/David-William-Cooke/2701248 (verified)\n[green] society: Board of Directors @ Human Growth Foundation \u2014 https://profiles.hopkinsmedicine.org/provider/David-William-Cooke/2701248 (verified)\n[green] society: Ad Hoc Grant Reviewer @ New Foundation for Diabetes \u2014 https://profiles.hopkinsmedicine.org/provider/David-William-Cooke/2701248 (verified)\n[green] leadership: Director, Pediatric Endocrinology Fellowship Training Program @ Johns Hopkins \u2014 https://profiles.hopkinsmedicine.org/provider/David-William-Cooke/2701248 (verified)\n[green] leadership: Clinical Director, Pediatric Endocrinology @ Johns Hopkins \u2014 https://profiles.hopkinsmedicine.org/provider/David-William-Cooke/2701248 (verified)",
+    "email_source": null
   },
   {
     "full_name": "Janet l. Crane",
@@ -3346,7 +3384,7 @@
     "profile_url": "https://profiles.hopkinsmedicine.org/provider/Janet-Lynn-Crane/2703098",
     "school": "Johns Hopkins School of Medicine",
     "subspecialty": null,
-    "email": null,
+    "email": "jcrane2@jhmi.edu",
     "education": [
       {
         "type": "Medical School",
@@ -3417,7 +3455,8 @@
     },
     "qc_nih": "green \u2014 17 grant(s) found at confirmed institution",
     "qc_hindex": "green \u2014 h-index 34 retrieved from OpenAlex",
-    "qc_roles": "green \u2014 [green] leadership: Director of the Pediatric Bone Health Program @ Johns Hopkins University School of Medicine \u2014 https://profiles.hopkinsmedicine.org/provider/Janet-Lynn-Crane/2703098 (verified)"
+    "qc_roles": "green \u2014 [green] leadership: Director of the Pediatric Bone Health Program @ Johns Hopkins University School of Medicine \u2014 https://profiles.hopkinsmedicine.org/provider/Janet-Lynn-Crane/2703098 (verified)",
+    "email_source": "pubmed"
   },
   {
     "full_name": "Stephanie E. Green",
@@ -3496,7 +3535,8 @@
     },
     "qc_nih": "green \u2014 no NIH grants found",
     "qc_hindex": "yellow \u2014 h-index not found \u2014 manual verification may be needed",
-    "qc_roles": "green \u2014 [green] leadership: Director @ Fit and Healthy Kids Clinic at Kennedy Krieger Institute \u2014 https://profiles.hopkinsmedicine.org/provider/Stephanie-E-Green/2700892 (verified)"
+    "qc_roles": "green \u2014 [green] leadership: Director @ Fit and Healthy Kids Clinic at Kennedy Krieger Institute \u2014 https://profiles.hopkinsmedicine.org/provider/Stephanie-E-Green/2700892 (verified)",
+    "email_source": null
   },
   {
     "full_name": "Talia Hitt",
@@ -3617,7 +3657,8 @@
     },
     "qc_nih": "green \u2014 3 grant(s) found at confirmed institution",
     "qc_hindex": "green \u2014 h-index 8 retrieved from Scopus",
-    "qc_roles": "yellow \u2014 [yellow] society: Member @ Pediatric Endocrine Society \u2014 https://profiles.hopkinsmedicine.org/provider/Talia-Alyssa-Hitt/2704377 (role text not found in evidence)\n[yellow] society: Member @ Endocrine Society \u2014 https://profiles.hopkinsmedicine.org/provider/Talia-Alyssa-Hitt/2704377 (role text not found in evidence)\n[yellow] society: Member @ American Diabetes Association \u2014 https://profiles.hopkinsmedicine.org/provider/Talia-Alyssa-Hitt/2704377 (role text not found in evidence)"
+    "qc_roles": "yellow \u2014 [yellow] society: Member @ Pediatric Endocrine Society \u2014 https://profiles.hopkinsmedicine.org/provider/Talia-Alyssa-Hitt/2704377 (role text not found in evidence)\n[yellow] society: Member @ Endocrine Society \u2014 https://profiles.hopkinsmedicine.org/provider/Talia-Alyssa-Hitt/2704377 (role text not found in evidence)\n[yellow] society: Member @ American Diabetes Association \u2014 https://profiles.hopkinsmedicine.org/provider/Talia-Alyssa-Hitt/2704377 (role text not found in evidence)",
+    "email_source": null
   },
   {
     "full_name": "Jacquelyn Anna Manfredo",
@@ -3673,7 +3714,8 @@
     },
     "qc_nih": "green \u2014 no NIH grants found",
     "qc_hindex": "green \u2014 h-index 3 retrieved from Scopus",
-    "qc_roles": "green \u2014 no qualifying roles found"
+    "qc_roles": "green \u2014 no qualifying roles found",
+    "email_source": null
   },
   {
     "full_name": "Sandra Loeb Salsberg",
@@ -3729,7 +3771,8 @@
     },
     "qc_nih": "green \u2014 no NIH grants found",
     "qc_hindex": "green \u2014 h-index 3 retrieved from Scopus",
-    "qc_roles": "green \u2014 no qualifying roles found"
+    "qc_roles": "green \u2014 no qualifying roles found",
+    "email_source": null
   },
   {
     "full_name": "Risa M. Wolf",
@@ -3737,7 +3780,7 @@
     "profile_url": "https://profiles.hopkinsmedicine.org/provider/Risa-Michelle-Wolf/2704475",
     "school": "Johns Hopkins School of Medicine",
     "subspecialty": null,
-    "email": null,
+    "email": "rwolf@jhu.edu",
     "education": [
       {
         "type": "Fellowship",
@@ -3850,7 +3893,8 @@
     },
     "qc_nih": "green \u2014 11 grant(s) found at confirmed institution",
     "qc_hindex": "green \u2014 h-index 26 retrieved from Scopus",
-    "qc_roles": "green \u2014 [green] leadership: Director, Pediatric Diabetes Program @ Johns Hopkins \u2014 https://profiles.hopkinsmedicine.org/provider/Risa-Michelle-Wolf/2704475 (verified)\n[green] leadership: Founder and Medical Director of Camp Charm City diabetes camp @ Camp Charm City \u2014 https://profiles.hopkinsmedicine.org/provider/Risa-Michelle-Wolf/2704475 (verified)\n[green] leadership: Principal Investigator @ Pediatric Diabetes Consortium site at Johns Hopkins \u2014 https://profiles.hopkinsmedicine.org/provider/Risa-Michelle-Wolf/2704475 (verified)"
+    "qc_roles": "green \u2014 [green] leadership: Director, Pediatric Diabetes Program @ Johns Hopkins \u2014 https://profiles.hopkinsmedicine.org/provider/Risa-Michelle-Wolf/2704475 (verified)\n[green] leadership: Founder and Medical Director of Camp Charm City diabetes camp @ Camp Charm City \u2014 https://profiles.hopkinsmedicine.org/provider/Risa-Michelle-Wolf/2704475 (verified)\n[green] leadership: Principal Investigator @ Pediatric Diabetes Consortium site at Johns Hopkins \u2014 https://profiles.hopkinsmedicine.org/provider/Risa-Michelle-Wolf/2704475 (verified)",
+    "email_source": "pubmed"
   },
   {
     "full_name": "Malinda Wu",
@@ -3858,7 +3902,7 @@
     "profile_url": "https://profiles.hopkinsmedicine.org/provider/Malinda-Wu/2708605",
     "school": "Johns Hopkins School of Medicine",
     "subspecialty": null,
-    "email": null,
+    "email": "mwu86@jhmi.edu",
     "education": [
       {
         "type": "Medical School",
@@ -3999,6 +4043,7 @@
     },
     "qc_nih": "green \u2014 1 grant(s) found at confirmed institution",
     "qc_hindex": "green \u2014 h-index 7 retrieved from Scopus",
-    "qc_roles": "green \u2014 [green] society: Member @ Pediatric Endocrine Society \u2014 https://profiles.hopkinsmedicine.org/provider/malinda-wu/2708605 (verified)\n[green] society: Member @ Endocrine Society \u2014 https://profiles.hopkinsmedicine.org/provider/malinda-wu/2708605 (verified)\n[green] society: Member @ American Society for Bone and Mineral Research \u2014 https://profiles.hopkinsmedicine.org/provider/malinda-wu/2708605 (verified)\n[green] leadership: Physician Lead @ Kennedy Krieger Institute's multi-disciplinary team for Osteogenesis Imperfecta \u2014 https://www.kennedykrieger.org/patient-care/faculty-staff/malinda-wu (verified)"
+    "qc_roles": "green \u2014 [green] society: Member @ Pediatric Endocrine Society \u2014 https://profiles.hopkinsmedicine.org/provider/malinda-wu/2708605 (verified)\n[green] society: Member @ Endocrine Society \u2014 https://profiles.hopkinsmedicine.org/provider/malinda-wu/2708605 (verified)\n[green] society: Member @ American Society for Bone and Mineral Research \u2014 https://profiles.hopkinsmedicine.org/provider/malinda-wu/2708605 (verified)\n[green] leadership: Physician Lead @ Kennedy Krieger Institute's multi-disciplinary team for Osteogenesis Imperfecta \u2014 https://www.kennedykrieger.org/patient-care/faculty-staff/malinda-wu (verified)",
+    "email_source": "pubmed"
   }
 ]

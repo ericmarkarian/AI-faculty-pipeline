@@ -33,6 +33,7 @@ from providers.live import LiveNihProvider, LiveRolesProvider, LiveHIndexProvide
 from providers.generic_faculty_scraper import GenericFacultyScraper
 from providers.profile_scrapers import StanfordProfileScraper, TavilyProfileScraper, PlaywrightProfileScraper
 from providers.profile_scrapers.base import ProfileScraper
+from providers.pubmed_email import PubmedEmailProvider
 from providers.qc import verify_faculty_roles
 
 client = OpenAI(api_key=os.environ.get("OPENAI_API_KEY"))
@@ -334,6 +335,7 @@ def agent2_enrich(
     nih_provider=None,
     roles_provider=None,
     hindex_provider=None,
+    email_provider=None,
     on_enriched=None,
     discipline: str = DISCIPLINE,
 ) -> dict:
@@ -343,6 +345,8 @@ def agent2_enrich(
         roles_provider = LiveRolesProvider(client)
     if hindex_provider is None:
         hindex_provider = LiveHIndexProvider(discipline=discipline)
+    if email_provider is None:
+        email_provider = PubmedEmailProvider()
 
     t0 = time.time()
     name = faculty.get("full_name", "Unknown")
@@ -495,6 +499,17 @@ def agent2_enrich(
                         if profile_email and profile_education:
                             break  # got everything we need
 
+    # Email: directory record → profile page scan → PubMed corresponding-author fallback
+    email = faculty.get("email")
+    email_source = "directory" if email else None
+    if not email and profile_email:
+        email, email_source = profile_email, "profile"
+    if not email:
+        email = email_provider.get_email(name, school)
+        if email:
+            email_source = "pubmed"
+            print(f"    -> [PubmedEmail] Email: {email}")
+
     nih_project_nums = ", ".join(g["project_num"] for g in nih_grants)
     nih_grant_titles = " | ".join(g["title"] for g in nih_grants)
 
@@ -522,7 +537,8 @@ def agent2_enrich(
         # Authoritative profile-page title (e.g. Stanford Profiles) overrides a stale
         # division-directory listing; fall back to directory, then LLM-discovered title.
         "title": profile_title or faculty.get("title") or extracted_title,
-        "email": faculty.get("email") or profile_email,
+        "email": email,
+        "email_source": email_source,
         "education": profile_education or [],
         "h_index": h_index,
         "h_index_source": h_index_source,
