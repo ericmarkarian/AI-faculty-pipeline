@@ -14,6 +14,14 @@ _EMAIL_RE = re.compile(
     re.IGNORECASE,
 )
 
+# Bare (non-mailto) emails in visible page text. Restricted to institutional
+# TLDs — .com/.io/etc. in page text are almost always vendor/tracking junk,
+# while faculty addresses are @*.edu / @*.org (children's hospitals) / @*.gov.
+_BARE_EMAIL_RE = re.compile(
+    r'\b([a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.(?:edu|org|gov))\b',
+    re.IGNORECASE,
+)
+
 _GENERIC_EMAIL_LOCAL_PARTS = frozenset({
     "profiles", "info", "webmaster", "support", "contact", "admin",
     "help", "feedback", "noreply", "no-reply", "donotreply", "example",
@@ -144,9 +152,19 @@ def _is_personal_email(email: str) -> bool:
 
 
 def extract_email_from_html(html: str) -> str | None:
-    """Scan raw HTML for mailto: links — catches emails hidden by CSS."""
-    matches = _EMAIL_RE.findall(html)
-    for m in matches:
+    """Extract a personal email from profile-page HTML.
+
+    Tier 1: scan raw HTML for mailto: links (catches CSS-hidden emails).
+    Tier 2: scan the page's *visible text* for bare emails on institutional
+            TLDs — raw HTML is excluded here because JS bundles and meta tags
+            carry vendor addresses that would false-positive.
+    """
+    if not html:
+        return None
+    for m in _EMAIL_RE.findall(html):
+        if _is_personal_email(m):
+            return m
+    for m in _BARE_EMAIL_RE.findall(html_to_text(html)):
         if _is_personal_email(m):
             return m
     return None
