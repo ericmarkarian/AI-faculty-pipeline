@@ -8,7 +8,7 @@ The pipeline runs three agents in sequence:
 
 | Agent | Role | Tools |
 |-------|------|-------|
-| Agent 1 — Discovery | Finds all faculty at a given school and discipline | GPT-4o with live web search |
+| Agent 1 — Discovery | Finds all faculty at a given school and discipline | Playwright directory scrape + GPT-4o web search (both run, results unioned) |
 | Agent 2 — Enrichment | Looks up H-index for each faculty member | Scopus API |
 | Agent 3 — QC | Flags duplicates, conflicts, scores confidence | GPT-4o (disabled for now) |
 

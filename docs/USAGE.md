@@ -22,6 +22,7 @@ file in the repo root is loaded automatically):
 | `OPENALEX_API_KEY` | Optional | Higher-concurrency OpenAlex pool; works without it (polite pool) |
 | `SITE_PASSWORD` | Optional | If set, the web UI requires this password (HTTP basic auth) |
 | `PORT` | Optional | Web server port (default `5050`) |
+| `AGENT1_WEB_SEARCH` | Optional | `0` runs Agent 1 discovery from the scraped directory pages only. Default `1` — directory scrape **and** GPT-4o web search, unioned (one extra web-search call per school) |
 
 > **Scopus note:** the Scopus API generally requires your institution's network or VPN
 > (or a valid `SCOPUS_INSTTOKEN`). If Scopus is unavailable, the pipeline automatically

@@ -30,6 +30,7 @@ load_dotenv()
 
 import observe
 from providers.live import LiveNihProvider, LiveRolesProvider, LiveHIndexProvider, merge_specialty_considerations
+from providers.faculty_merge import SOURCE_WEB_SEARCH, dedupe_by_name, source_breakdown
 from providers.generic_faculty_scraper import GenericFacultyScraper
 from providers.profile_scrapers import StanfordProfileScraper, TavilyProfileScraper, PlaywrightProfileScraper
 from providers.profile_scrapers.base import ProfileScraper
@@ -252,7 +253,7 @@ def agent1_scrape(school_name: str, scraper=None, discipline: str = DISCIPLINE) 
     try:
         records = provider.get_faculty(school_name, discipline)
         all_faculty.extend(records)
-        print(f"  -> Found {len(records)} faculty (Playwright + GPT-4o HTML extraction)")
+        print(f"  -> Found {len(records)} faculty (directory scrape + web search)")
     except ValueError:
         # No browse URL configured for this school — fall back to LLM web search
         print(f"  [Agent 1] No browse URL for {school_name}, falling back to web search...")
@@ -274,9 +275,10 @@ If a field is not available, use null.
 """
         try:
             raw = responses_web_search(prompt)
-            faculty_list = parse_json(raw)
-            for f in faculty_list:
-                f["school"] = school_name
+            faculty_list = [
+                {**f, "school": school_name, "discovery_source": SOURCE_WEB_SEARCH}
+                for f in parse_json(raw) if isinstance(f, dict)
+            ]
             all_faculty.extend(faculty_list)
             print(f"  -> Found {len(faculty_list)} faculty (web search fallback)")
             time.sleep(1)
@@ -294,20 +296,19 @@ If a field is not available, use null.
         title = (f.get("title") or "").lower()
         return any(kw in title for kw in _EXCLUDE_TITLE_KEYWORDS)
 
-    seen: set[str] = set()
-    deduped = []
+    kept = []
     for f in all_faculty:
         if _is_excluded(f):
             print(f"  [Agent 1] Skipping '{f.get('full_name')}' (title: {f.get('title')})")
             continue
-        key = f.get("full_name", "").lower().strip()
-        if key not in seen:
-            seen.add(key)
-            deduped.append(f)
+        kept.append(f)
+    deduped = dedupe_by_name(kept)
 
+    by_source = source_breakdown(deduped)
     observe.log("agent1_complete", school=school_name, faculty_found=len(deduped),
-                latency_ms=int((time.time() - t0) * 1000))
-    print(f"  -> Total at {school_name}: {len(deduped)}")
+                by_source=by_source, latency_ms=int((time.time() - t0) * 1000))
+    print(f"  -> Total at {school_name}: {len(deduped)} "
+          f"({', '.join(f'{s}: {n}' for s, n in sorted(by_source.items()))})")
     return deduped
 
 
@@ -871,16 +872,12 @@ def run_pipeline(schools=None, discipline=None, on_enriched=None, on_qc_complete
         observe.log_mem("after_school", school_num=i, of=len(_schools), faculty_so_far=len(all_faculty))
         time.sleep(1)
 
-    # Global deduplicate
-    seen = set()
-    deduped = []
-    for f in all_faculty:
-        key = (f.get("full_name", "").lower().strip(), f.get("school", "").lower())
-        if key not in seen:
-            seen.add(key)
-            deduped.append(f)
+    # Global deduplicate (per school — joint appointments stay as separate rows)
+    deduped = dedupe_by_name(all_faculty)
 
-    print(f"\n[Pipeline] Total faculty to enrich: {len(deduped)}")
+    by_source = source_breakdown(deduped)
+    print(f"\n[Pipeline] Total faculty to enrich: {len(deduped)} "
+          f"({', '.join(f'{s}: {n}' for s, n in sorted(by_source.items()))})")
 
     if not deduped:
         print("\n[!] No faculty found. Check your API key and try again.")
