@@ -51,6 +51,7 @@ class FacultyRecord(TypedDict, total=False):
     school: str
     subspecialty: str | None
     email: str | None
+    discovery_source: str   # "university", "web_search", "university+web_search", ...
 
 
 class ScraperProvider(ABC):

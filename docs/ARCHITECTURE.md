@@ -33,8 +33,9 @@ run_pipeline(schools, discipline)
 
 ## Agent 1 — Discovery
 
-Implemented by [`GenericFacultyScraper`](../providers/generic_faculty_scraper.py). Strategy is
-**render-then-extract**, not raw HTML scraping.
+Implemented by [`GenericFacultyScraper`](../providers/generic_faculty_scraper.py). Two
+independent sources run on **every** school and are unioned: a **directory scrape**
+(render-then-extract) and a **GPT-4o web search**.
 
 1. **URL resolution** — look up `(discipline, school)` in
    [`data/faculty_urls.json`](../data/faculty_urls.json). If absent, ask GPT-4o + web search
@@ -47,17 +48,27 @@ Implemented by [`GenericFacultyScraper`](../providers/generic_faculty_scraper.py
    link. This collapses a directory from ~100 raw-HTML chunks to 1–3 text chunks.
 4. **Extract** — GPT-4o pulls `full_name`, `title`, `profile_url`, filtering to people whose
    **primary** discipline matches (excludes "by courtesy", visiting faculty, residents,
-   fellows, staff).
-5. **Pagination + merge** — follow `?page=N` / `/page/N` links. When both a university and
-   hospital page exist, **university data wins** on `profile_url` and `title` so Agent 2 gets
-   the richer bio URL.
-6. **Fallback** — if Playwright fails on the university/legacy source, fall back to GPT-4o web
-   search.
+   fellows, staff). Pagination (`?page=N` / `/page/N`) is followed.
+5. **Web search (always, in parallel)** — GPT-4o with `web_search_preview` searches for the
+   same roster directly, reaching division pages, hospital microsites and news items that the
+   configured URLs never touch. It runs on a background thread so its latency overlaps the
+   browser fetches, and a failure in either source never discards the other.
+   Set `AGENT1_WEB_SEARCH=0` (or `GenericFacultyScraper(use_web_search=False)`) to scrape only.
+6. **Merge** — [`providers/faculty_merge.py`](../providers/faculty_merge.py) unions the
+   sources. Records match on a normalized name that ignores degrees ("Aye, MD"), middle
+   initials, accents, punctuation and `Last, First` ordering. Field precedence is
+   `university > hospital > legacy url > web_search`: the most trusted source that has a
+   value wins, lower-priority sources only fill blanks. Each record carries
+   `discovery_source` (e.g. `university+web_search`) naming every source that found the person.
 
-Agent 1 then dedups by lowercased `full_name` and excludes emeritus/emerita/courtesy titles.
+Agent 1 then dedups with the same name matching and excludes emeritus/emerita/courtesy titles.
 
-> **Note vs. README:** the README describes Agent 1 as pure GPT-4o web search. The real
-> primary path is Playwright + GPT-4o HTML extraction; web search is only the fallback.
+> **Why both sources:** neither is a superset of the other. Web search used to be a fallback
+> that fired only when the browser fetch failed, so a batch school search returned fewer
+> people than looking the same faculty member up by hand — the batch/manual inconsistency.
+
+> **Note vs. README:** the README describes Agent 1 as pure GPT-4o web search. The real path
+> is Playwright + GPT-4o HTML extraction **and** GPT-4o web search, unioned.
 
 ---
 

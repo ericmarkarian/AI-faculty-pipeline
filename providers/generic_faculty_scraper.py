@@ -1,17 +1,27 @@
 """
-GenericFacultyScraper — fetches faculty directory pages using a real browser (Playwright)
-so JS-rendered pages load fully, then sends compressed plain-text to GPT-4o for extraction.
+GenericFacultyScraper — finds a school's faculty two independent ways and unions them:
 
-HTML is converted to plain text with hrefs inlined before sending to GPT-4o, keeping
-token counts low (typically 1-3 calls per school vs 78-104 with raw HTML chunks).
+  1. Playwright directory scrape — fetches the configured university and hospital
+     directory URLs in a real browser so JS-rendered pages load fully, converts the
+     HTML to plain text with hrefs inlined (keeps token counts low: 1-3 GPT-4o calls
+     per school vs 78-104 with raw HTML chunks), then extracts faculty with GPT-4o.
+  2. GPT-4o web search — searches for the roster directly, catching faculty who are
+     only listed on a division page, hospital microsite, or news item that the
+     configured URLs never reach.
 
-Works for any school in data/faculty_urls.json regardless of HTML structure.
-Falls back to GPT-4o web search if Playwright fetch fails.
+BOTH run on every school. Web search used to be a fallback that fired only when the
+browser fetch failed, which is why a batch school search returned fewer people than
+looking the same faculty member up by hand. Results are merged by
+providers.faculty_merge, which dedupes across sources and prefers scraped
+(page-grounded) values over web-search ones field by field.
+
+Set AGENT1_WEB_SEARCH=0 to run the directory scrape alone.
 """
 import json
 import os
 import re
 import time
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from urllib.parse import urljoin, urlparse
 
@@ -19,7 +29,11 @@ from bs4 import BeautifulSoup
 from openai import OpenAI
 
 from providers.base import ScraperProvider, FacultyRecord
-from providers.utils import clean_url, CHROMIUM_LAUNCH_ARGS, _PLAYWRIGHT_SEM
+from providers.faculty_merge import SOURCE_WEB_SEARCH, merge_faculty, source_breakdown
+from providers.utils import CHROMIUM_LAUNCH_ARGS, _PLAYWRIGHT_SEM
+
+# Web search is on by default; AGENT1_WEB_SEARCH=0/false/no turns it off.
+_WEB_SEARCH_DEFAULT = os.environ.get("AGENT1_WEB_SEARCH", "1").lower() not in ("0", "false", "no")
 
 # Keep chunks small: GPT-4o silently under-returns when asked to extract a long
 # roster from one large block (a 75-person page sent whole yields ~8 of them).
@@ -190,15 +204,54 @@ If no faculty are visible, return an empty array: []
     return all_items
 
 
+def _parse_faculty_array(raw: str) -> list[dict]:
+    """Parse a JSON array of faculty out of a model response.
+
+    Tolerates markdown fences, prose around the array, and truncated output — a
+    response cut off mid-array still yields every complete object before the cut,
+    which beats discarding the whole roster.
+    """
+    if not raw:
+        return []
+    clean = raw.strip().removeprefix("```json").removeprefix("```").removesuffix("```").strip()
+    start = clean.find("[")
+    if start == -1:
+        return []
+    candidate = clean[start:]
+    try:
+        parsed = json.loads(candidate)
+    except json.JSONDecodeError:
+        parsed = None
+        # Walk back to the longest prefix that parses (drops the truncated tail).
+        for end in range(len(candidate), 1, -1):
+            if candidate[end - 1] != "}":
+                continue
+            try:
+                parsed = json.loads(candidate[:end] + "]")
+                break
+            except json.JSONDecodeError:
+                continue
+        if parsed is None:
+            return []
+    return [item for item in parsed if isinstance(item, dict)] if isinstance(parsed, list) else []
+
+
 def _extract_via_web_search(school: str, discipline: str, client: OpenAI) -> list[dict]:
-    """Fallback: ask GPT-4o with web search to find faculty for this school."""
-    print(f"    [GenericScraper] Falling back to GPT-4o web search for {school}")
+    """Ask GPT-4o with web search to find this school's faculty.
+
+    Runs alongside the directory scrape on every school — it reaches division
+    pages, hospital microsites and news items the configured URLs never touch.
+    """
+    print(f"    [GenericScraper] GPT-4o web search for {school}")
     prompt = f"""Search the web and find ALL {discipline} faculty at {school}.
-Look at their official faculty directory page.
+Check the official faculty directory page, the department/division page, and the
+affiliated hospital's specialist listing — faculty are often listed on only one of them.
 
 For each faculty member extract:
 - full_name
 - title (e.g. Assistant Professor, Associate Professor, Professor, Instructor)
+- subspecialty (if listed, else null)
+- email (if listed, else null)
 - profile_url (link to their individual faculty profile if available, else null)
 
 Return ONLY a JSON array. No explanation, no markdown fences.
@@ -215,15 +268,23 @@ Only include faculty (professors/instructors/researchers), not residents or fell
             for item in block.content:
                 if hasattr(item, "text"):
                     raw += item.text
-    raw = raw.strip().removeprefix("```json").removeprefix("```").removesuffix("```").strip()
-    return json.loads(raw)
+    return _parse_faculty_array(raw)
+
+
+def _print_source_breakdown(records: list[FacultyRecord], school: str) -> None:
+    """Report which source each person came from — the audit trail for batch/manual gaps."""
+    counts = source_breakdown(records)
+    breakdown = ", ".join(f"{src}: {n}" for src, n in sorted(counts.items()))
+    print(f"    [GenericScraper] Extracted {len(records)} faculty for {school} ({breakdown})")
 
 
 class GenericFacultyScraper(ScraperProvider):
     """
     School-agnostic faculty scraper.
-    Uses Playwright to fetch fully-rendered HTML, then GPT-4o to extract faculty.
-    Falls back to GPT-4o web search if the fetch fails.
+
+    Runs two discovery sources per school and unions them:
+      * Playwright fetch of the configured directory URLs + GPT-4o extraction
+      * GPT-4o web search (disable with use_web_search=False or AGENT1_WEB_SEARCH=0)
     """
 
     def __init__(
@@ -231,11 +292,13 @@ class GenericFacultyScraper(ScraperProvider):
         urls_path: str = "data/faculty_urls.json",
         request_delay: float = 1.0,
         extraction_model: str = "gpt-4o",
+        use_web_search: bool | None = None,
     ) -> None:
         self._urls_path = urls_path
         self._urls = _load_urls(urls_path)
         self._delay = request_delay
         self._extraction_model = extraction_model
+        self._use_web_search = _WEB_SEARCH_DEFAULT if use_web_search is None else use_web_search
         self._client = OpenAI(api_key=os.environ.get("OPENAI_API_KEY"))
 
     def _discover_urls(self, school: str, discipline: str) -> list[tuple[str, str]]:
@@ -309,81 +372,62 @@ class GenericFacultyScraper(ScraperProvider):
         return sources
 
 
-    def get_faculty(self, school: str, discipline: str) -> list[FacultyRecord]:
-        sources = self._get_url_sources(school, discipline)
-        if not sources:
+    def _scrape_directory(self, url: str, source_type: str, school: str, discipline: str) -> list[dict]:
+        """Fetch one directory URL (plus its pagination) and extract faculty from it."""
+        print(f"    [GenericScraper] Fetching ({source_type}): {url}")
+        html = _fetch_html_playwright(url)
+        text = _html_to_text(html, base_url=url)
+        print(f"    [GenericScraper] Fetched {len(text)} chars of plain text")
+
+        extra_pages = _pagination_urls(html, url)
+        if extra_pages:
+            print(f"    [GenericScraper] Following {len(extra_pages)} pagination page(s)")
+        for page_url in extra_pages:
+            try:
+                page_html = _fetch_html_playwright(page_url)
+                text += "\n" + _html_to_text(page_html, base_url=page_url)
+            except Exception as e:
+                print(f"    [GenericScraper] Skipping pagination URL {page_url}: {e}")
+
+        return _extract_via_gpt4o(text, school, discipline, self._client, self._extraction_model)
+
+    def _search_web(self, school: str, discipline: str) -> list[dict]:
+        """Web-search source. Never raises — a failure here must not lose the scrape."""
+        try:
+            items = _extract_via_web_search(school, discipline, self._client)
+            print(f"    [GenericScraper] web_search: {len(items)} faculty returned")
+            return items
+        except Exception as e:
+            print(f"    [GenericScraper] Web search failed: {e}")
             return []
 
-        # Keyed by normalised name. University source overwrites hospital on profile_url/title
-        # so Agent 2's PlaywrightProfileScraper gets the richer academic bio URL.
-        merged: dict[str, FacultyRecord] = {}
+    def get_faculty(self, school: str, discipline: str) -> list[FacultyRecord]:
+        sources = self._get_url_sources(school, discipline)
+        results: list[tuple[str, list[dict]]] = []
 
-        for url, source_type in sources:
-            time.sleep(self._delay)
-            extracted: list[dict] = []
-            try:
-                print(f"    [GenericScraper] Fetching ({source_type}): {url}")
-                html = _fetch_html_playwright(url)
-                text = _html_to_text(html, base_url=url)
-                print(f"    [GenericScraper] Fetched {len(text)} chars of plain text")
-                extra_pages = _pagination_urls(html, url)
-                if extra_pages:
-                    print(f"    [GenericScraper] Following {len(extra_pages)} pagination page(s)")
-                for page_url in extra_pages:
-                    try:
-                        page_html = _fetch_html_playwright(page_url)
-                        text += "\n" + _html_to_text(page_html, base_url=page_url)
-                    except Exception as pe:
-                        print(f"    [GenericScraper] Skipping pagination URL {page_url}: {pe}")
-                extracted = _extract_via_gpt4o(text, school, discipline, self._client)
-            except Exception as e:
-                print(f"    [GenericScraper] Playwright fetch failed ({source_type}, {e})")
-                # Only fall back to web search when the university / legacy source fails —
-                # a missing hospital page is fine as long as the university page worked.
-                if source_type in ("university", "unknown"):
-                    print(f"    [GenericScraper] Trying web search fallback...")
-                    try:
-                        extracted = _extract_via_web_search(school, discipline, self._client)
-                    except Exception as e2:
-                        print(f"    [GenericScraper] Web search also failed: {e2}")
+        # Web search runs in parallel with the browser fetches — it is pure network
+        # latency (~20-40s) and would otherwise be added to every school's runtime.
+        with ThreadPoolExecutor(max_workers=1) as pool:
+            web_future = pool.submit(self._search_web, school, discipline) if self._use_web_search else None
 
-            new_from_source = 0
-            for item in extracted:
-                if not isinstance(item, dict):
-                    continue
-                name = (item.get("full_name") or item.get("name") or "").strip()
-                if not name:
-                    continue
-                title_lower = (item.get("title") or "").lower()
-                if "by courtesy" in title_lower or "courtesy appointment" in title_lower:
-                    print(f"    [GenericScraper] Skipping courtesy appointment: {name}")
-                    continue
+            for url, source_type in sources:
+                time.sleep(self._delay)
+                try:
+                    extracted = self._scrape_directory(url, source_type, school, discipline)
+                    print(f"    [GenericScraper] {source_type}: {len(extracted)} faculty extracted")
+                    results.append((source_type, extracted))
+                except Exception as e:
+                    # A dead hospital page (or even a dead university page) is survivable:
+                    # the other sources still contribute.
+                    print(f"    [GenericScraper] Playwright fetch failed ({source_type}, {e})")
 
-                record: FacultyRecord = {
-                    "full_name":   name,
-                    "title":       (item.get("title") or "").strip() or None,
-                    "profile_url": clean_url(item.get("profile_url")),
-                    "school":      school,
-                    "subspecialty": None,
-                    "email":       None,
-                }
+            if web_future is not None:
+                results.append((SOURCE_WEB_SEARCH, web_future.result()))
 
-                key = name.lower()
-                if key not in merged:
-                    merged[key] = record
-                    new_from_source += 1
-                elif source_type == "university":
-                    # University wins: use its profile_url and title, keep other fields
-                    existing = merged[key]
-                    merged[key] = {
-                        **existing,
-                        "profile_url": record["profile_url"] or existing.get("profile_url"),
-                        "title":       record["title"]       or existing.get("title"),
-                    }
-                    new_from_source += 1
+        if not results:
+            print(f"    [GenericScraper] No sources produced results for {school}")
+            return []
 
-            print(f"    [GenericScraper] {source_type}: {new_from_source} faculty (total merged: {len(merged)})")
-
-        records = list(merged.values())
-        print(f"    [GenericScraper] Extracted {len(records)} faculty for {school}")
+        records = merge_faculty(results, school)
+        _print_source_breakdown(records, school)
         return records
