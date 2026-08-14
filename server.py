@@ -9,14 +9,12 @@ import json
 import multiprocessing as mp
 import os
 import queue
-import random
 import threading
 import time
-from collections import OrderedDict
 
 import requests
 from dotenv import load_dotenv
-from flask import Flask, Response, jsonify, request, send_file, send_from_directory
+from flask import Flask, Response, jsonify, request, send_from_directory
 
 load_dotenv()
 
@@ -336,77 +334,6 @@ def start_run():
                 _run_queue,
             )
         finally:
-            _pipeline_running = False
-
-    threading.Thread(target=run, daemon=True).start()
-    return jsonify({"status": "started"})
-
-
-# ─────────────────────────────────────────────
-# Demo mode: replay a pre-captured run through the same SSE queue so the UI
-# behaves exactly like a live run without waiting on scraping/enrichment.
-# ─────────────────────────────────────────────
-
-_DEMO_FILE = os.path.join("data", "demo", "pediatric_endocrinology_stanford_harvard_hopkins.json")
-
-# Keys stripped from the initial "faculty" event so QC badges stay pending
-# until the replayed QC phase, matching real-run behavior.
-_DEMO_QC_KEYS = ("qc", "qc_nih", "qc_hindex", "qc_roles", "qc_overall")
-
-
-def _replay_demo(records: list, q: "queue.Queue") -> None:
-    """Push faculty/qc_update messages with pacing that mimics a live run."""
-    by_school: "OrderedDict[str, list]" = OrderedDict()
-    for rec in records:
-        by_school.setdefault(rec.get("school", ""), []).append(rec)
-
-    total, done = len(records), 0
-    # ~22s enrichment phase regardless of record count, clamped to feel live.
-    delay = min(0.8, max(0.3, 22.0 / max(total, 1)))
-    time.sleep(1.5)  # scrape phase
-    for school_recs in by_school.values():  # one school streams at a time
-        for rec in school_recs:
-            done += 1
-            data = {k: v for k, v in rec.items() if k not in _DEMO_QC_KEYS}
-            q.put({"type": "faculty", "data": data, "completed": done, "total": total})
-            time.sleep(random.uniform(delay * 0.7, delay * 1.3))
-    for rec in records:  # QC phase — badges flip one by one
-        q.put({"type": "qc_update",
-               "data": {"full_name": rec.get("full_name"),
-                        "qc": rec.get("qc") or {"overall": "yellow"}}})
-        time.sleep(random.uniform(0.08, 0.2))
-
-
-@app.route("/api/run-demo", methods=["POST"])
-def start_demo_run():
-    global _run_queue, _pipeline_running
-
-    # Validate the demo file BEFORE taking the lock so a bad file can never
-    # leave _pipeline_running wedged.
-    try:
-        with open(_DEMO_FILE, "r") as f:
-            records = json.load(f)
-        if not isinstance(records, list) or not records:
-            raise ValueError("demo file is empty or not a list")
-    except Exception as exc:  # noqa: BLE001 — surface any failure to the UI
-        return jsonify({"error": f"Demo data unavailable: {exc}"}), 500
-
-    with _run_lock:
-        if _pipeline_running:
-            return jsonify({"error": "Pipeline already running"}), 409
-        _pipeline_running = True
-
-    _run_queue = queue.Queue()
-    q = _run_queue
-
-    def run():
-        global _pipeline_running
-        try:
-            _replay_demo(records, q)
-        except Exception as exc:  # noqa: BLE001
-            q.put({"type": "error", "message": f"demo replay failed: {exc}"})
-        finally:
-            q.put({"type": "done"})
             _pipeline_running = False
 
     threading.Thread(target=run, daemon=True).start()

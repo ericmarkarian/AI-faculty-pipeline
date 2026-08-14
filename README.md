@@ -116,7 +116,7 @@ pytest
 
 ```
 faculty_search.py                 # Pipeline: Agents 1-3, CSV/JSON output
-server.py                         # Flask app — SSE streaming, sweep + names modes, demo replay
+server.py                         # Flask app — SSE streaming, sweep + names modes
 observe.py                        # Structured logging, cost tracking, alerting
 medfaculty.html                   # Web UI (React, served by server.py)
 frontend/                         # Standalone static results page + UI screenshots
