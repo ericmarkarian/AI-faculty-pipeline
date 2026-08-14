@@ -551,22 +551,25 @@ function QcModal({ faculty, onClose }) {
 }
 
 // ── About ATLAS ───────────────────────────────────────────────────────────────
-// To add a real photo: set `photo` to an image URL or local path (e.g. 'assets/eric.jpg').
+// Photos are served from the repo's assets/ folder — hotlinked LinkedIn CDN URLs
+// carry an expiry token and go 403 after ~6 months. If the file is missing the
+// card falls back to initials.
 // To set LinkedIn: replace the `linkedin` URL. Leave as '' to hide the link.
 const ATLAS_BUILDERS = [
-  { name:'Eric Markarian',     initials:'EM', photo: 'https://media.licdn.com/dms/image/v2/D5603AQEhiAEL6WKp1w/profile-displayphoto-shrink_800_800/B56ZbFYY7PH0Ac-/0/1747068227568?e=1783555200&v=beta&t=2QHRlyjGFUnqJYdV4K13HYr1lCLE4f3ndJVhUzDhe4E', linkedin:'https://www.linkedin.com/in/eric-markarian' },
-  { name:'Chehan Wijayaratne', initials:'CW', photo: 'https://media.licdn.com/dms/image/v2/D5603AQGaYW8fezwh2w/profile-displayphoto-crop_800_800/B56Z6KYZ4SH0AM-/0/1780438114042?e=1783555200&v=beta&t=nR6HCFTlfUx6dNkgDLgTO3m2GZVZH3mCMb58EeFbajI', linkedin:'https://www.linkedin.com/in/chehanw/' },
+  { name:'Eric Markarian',     initials:'EM', photo: 'assets/eric.jpg',   linkedin:'https://www.linkedin.com/in/eric-markarian' },
+  { name:'Chehan Wijayaratne', initials:'CW', photo: 'assets/chehan.jpg', linkedin:'https://www.linkedin.com/in/chehanw/' },
 ];
 const ATLAS_SUPPORTERS = ['Dr. Natalie Pageler', 'Dr. Aydin Zahedivash'];
 
 function PersonCard({ person }) {
+  const [imgFailed,setImgFailed] = useState(false);
   const inner = (
     <div style={{display:'flex',flexDirection:'column',alignItems:'center',gap:10,width:140}}>
       <div style={{width:84,height:84,borderRadius:'50%',overflow:'hidden',flexShrink:0,
         background:'var(--red-wash, #F6ECEC)',border:'1px solid var(--border)',
         display:'flex',alignItems:'center',justifyContent:'center'}}>
-        {person.photo
-          ? <img src={person.photo} alt={person.name} style={{width:'100%',height:'100%',objectFit:'cover'}}/>
+        {person.photo&&!imgFailed
+          ? <img src={person.photo} alt={person.name} onError={()=>setImgFailed(true)} style={{width:'100%',height:'100%',objectFit:'cover'}}/>
           : <span style={{fontFamily:"'Spectral',serif",fontSize:28,fontWeight:600,color:'var(--red)'}}>{person.initials}</span>}
       </div>
       <div style={{textAlign:'center'}}>
@@ -632,6 +635,105 @@ function AboutModal({ onClose }) {
             <div style={{fontFamily:"'Spectral',serif",fontSize:14,color:'var(--ink)'}}>
               {ATLAS_SUPPORTERS.join(' · ')}
             </div>
+          </div>
+        </div>
+
+      </div>
+    </div>
+  );
+}
+
+/* ── API Key Modal — first-open prompt for the user's own OpenAI key ── */
+function ApiKeyModal({ onDone, onSkip }) {
+  const [key,setKey]     = useState('');
+  const [show,setShow]   = useState(false);
+  const [busy,setBusy]   = useState(false);
+  const [error,setError] = useState('');
+
+  useEffect(()=>{
+    const h=e=>{ if(e.key==='Escape') onSkip(); };
+    document.addEventListener('keydown',h);
+    return ()=>document.removeEventListener('keydown',h);
+  },[onSkip]);
+
+  const save = async () => {
+    if(!key.trim()||busy) return;
+    setBusy(true); setError('');
+    try {
+      const resp=await fetch('/api/key',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({key:key.trim()})});
+      const data=await resp.json();
+      if(!resp.ok){ setError(data.error||'Could not save the key.'); setBusy(false); return; }
+      onDone(key.trim());
+    } catch(e){ setError('Could not reach the server. Is it still running?'); setBusy(false); }
+  };
+
+  return (
+    <div style={{
+      position:'fixed',inset:0,zIndex:1300,
+      background:'oklch(16% 0.022 25 / 0.50)',
+      display:'flex',alignItems:'center',justifyContent:'center',padding:24,
+    }}>
+      <div style={{
+        background:'#fff',width:'100%',maxWidth:520,
+        border:'1px solid var(--border)',borderRadius:10,
+        boxShadow:'0 32px 80px oklch(16% 0.022 25 / 0.18)',
+        animation:'zoomIn 0.24s cubic-bezier(0.16,1,0.3,1)',
+      }}>
+
+        {/* Header */}
+        <div style={{padding:'28px 32px 20px',borderBottom:'1px solid var(--border-sub)'}}>
+          <div style={{fontSize:10,fontWeight:700,color:'var(--ink3)',textTransform:'uppercase',
+            letterSpacing:'0.12em',marginBottom:8}}>Welcome to ATLAS</div>
+          <div style={{fontFamily:"'Spectral',serif",fontSize:26,fontWeight:600,color:'var(--ink)',letterSpacing:'-0.01em'}}>
+            Connect your AI key
+          </div>
+        </div>
+
+        {/* Body */}
+        <div style={{padding:'22px 32px 28px'}}>
+          <p style={{fontSize:13.5,color:'var(--ink2)',lineHeight:1.6,margin:'0 0 18px'}}>
+            ATLAS runs searches through your own OpenAI account. Paste your API key below —
+            it stays on this computer and is only ever sent to OpenAI. You can create one at{' '}
+            <a href="https://platform.openai.com/api-keys" target="_blank" rel="noreferrer"
+              style={{color:'var(--red)',fontWeight:600}}>platform.openai.com/api-keys</a>.
+          </p>
+
+          <label style={{display:'block',fontSize:10,fontWeight:700,color:'var(--ink3)',
+            textTransform:'uppercase',letterSpacing:'0.12em',marginBottom:7}}>OpenAI API key</label>
+          <div style={{display:'flex',gap:8}}>
+            <input
+              type={show?'text':'password'}
+              value={key}
+              onChange={e=>{setKey(e.target.value);setError('');}}
+              onKeyDown={e=>{if(e.key==='Enter')save();}}
+              placeholder="sk-…"
+              autoFocus spellCheck={false} autoComplete="off"
+              style={{flex:1,padding:'9px 11px',border:'1.5px solid var(--border)',borderRadius:8,
+                fontSize:13,fontFamily:'ui-monospace,SFMono-Regular,Menlo,monospace',
+                color:'var(--ink)',outline:'none',background:'#fff'}}/>
+            <button onClick={()=>setShow(s=>!s)} style={{padding:'0 14px',border:'1.5px solid var(--border)',
+              borderRadius:8,background:'var(--surface)',color:'var(--ink2)',fontSize:12,fontWeight:600,cursor:'pointer'}}>
+              {show?'Hide':'Show'}
+            </button>
+          </div>
+
+          {error&&<div style={{marginTop:10,fontSize:12.5,lineHeight:1.5,color:'var(--qr-tx)',
+            background:'var(--qr-bg)',border:'1px solid var(--qr-bd)',borderRadius:8,padding:'8px 11px'}}>{error}</div>}
+
+          <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',marginTop:20}}>
+            <button onClick={onSkip} style={{background:'none',border:'none',cursor:'pointer',
+              fontSize:12.5,color:'var(--ink3)',textDecoration:'underline',padding:0}}>
+              Skip for now
+            </button>
+            <button onClick={save} disabled={!key.trim()||busy} style={{
+              padding:'9px 22px',border:'none',borderRadius:8,
+              background:(!key.trim()||busy)?'var(--surface2)':'var(--red)',
+              color:(!key.trim()||busy)?'var(--ink3)':'#fff',
+              fontSize:13,fontWeight:700,letterSpacing:'0.02em',
+              cursor:(!key.trim()||busy)?'default':'pointer',transition:'background 0.15s',
+            }}>
+              {busy?'Checking…':'Save & continue'}
+            </button>
           </div>
         </div>
 
@@ -1324,6 +1426,21 @@ function App() {
   const [qcModal,setQcModal]         = useState(null);
   const [detailFaculty,setDetail]    = useState(null);
   const [aboutOpen,setAboutOpen]     = useState(false);
+
+  /* ── OpenAI key gate — popup on first open until a key has been saved.
+     The key can live in two places: the server environment (.env — local
+     installs) or this browser's localStorage (shared deployments like Render,
+     where each visitor brings their own key and it rides along with each run). ── */
+  const getStoredKey=()=>{ try{ return localStorage.getItem('atlas_openai_key')||''; }catch(e){ return ''; } };
+  const [keyNeeded,setKeyNeeded]       = useState(false);
+  const [keyModalOpen,setKeyModalOpen] = useState(false);
+  useEffect(()=>{
+    fetch('/api/key-status').then(r=>r.json())
+      .then(d=>{ if(!d.configured && !getStoredKey()){ setKeyNeeded(true); setKeyModalOpen(true); } })
+      .catch(()=>{});
+  },[]);
+  const handleKeySaved=useCallback((k)=>{ try{ localStorage.setItem('atlas_openai_key',k); }catch(e){} setKeyNeeded(false); setKeyModalOpen(false); },[]);
+  const handleKeySkip =useCallback(()=>{ setKeyModalOpen(false); },[]);
   const esRef = useRef(null);
 
   /* ── Name Lookup tab state ── */
@@ -1410,8 +1527,8 @@ function App() {
     setProgress({done:0,total:0,phase:`Scraping ${selected.length} institution${selected.length>1?'s':''}…`});
     if(esRef.current){ esRef.current.close(); esRef.current=null; }
     try {
-      const resp=await fetch('/api/run',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({schools:selected,discipline:specialty,considerations})});
-      if(!resp.ok){ const err=await resp.json(); setErrorMsg(err.error||'Server error'); setLoading(false); return; }
+      const resp=await fetch('/api/run',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({schools:selected,discipline:specialty,considerations,api_key:getStoredKey()||undefined})});
+      if(!resp.ok){ const err=await resp.json(); if(err.code==='no_api_key'){ setKeyModalOpen(true); setLoading(false); return; } setErrorMsg(err.error||'Server error'); setLoading(false); return; }
     } catch(e){ setErrorMsg('Could not reach server. Is server.py running?'); setLoading(false); return; }
     attachStream();
   };
@@ -1511,8 +1628,8 @@ function App() {
     setNlProgress({done:0,total:0,phase:`Looking up ${nlParsed.length} ${nlParsed.length===1?'person':'people'}…`});
     if(nlEsRef.current){ nlEsRef.current.close(); nlEsRef.current=null; }
     try {
-      const resp=await fetch('/api/run-names',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({names:nlParsed,discipline:nlSpecialty,considerations:nlConsiderations})});
-      if(!resp.ok){ const err=await resp.json(); setNlErrorMsg(err.error||'Server error'); setNlLoading(false); return; }
+      const resp=await fetch('/api/run-names',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({names:nlParsed,discipline:nlSpecialty,considerations:nlConsiderations,api_key:getStoredKey()||undefined})});
+      if(!resp.ok){ const err=await resp.json(); if(err.code==='no_api_key'){ setKeyModalOpen(true); setNlLoading(false); return; } setNlErrorMsg(err.error||'Server error'); setNlLoading(false); return; }
     } catch(e){ setNlErrorMsg('Could not reach server. Is server.py running?'); setNlLoading(false); return; }
     const es=new EventSource('/api/stream-names'); nlEsRef.current=es;
     es.onmessage=e=>{
@@ -1670,6 +1787,7 @@ function App() {
       {nlDetail&&<FacultyDetail faculty={nlDetail} onClose={()=>setNlDetail(null)} onOpenQc={()=>setNlQcModal(nlDetail)}/>}
       {nlQcModal&&<QcModal faculty={nlQcModal} onClose={()=>setNlQcModal(null)}/>}
       {aboutOpen&&<AboutModal onClose={()=>setAboutOpen(false)}/>}
+      {!intro&&keyModalOpen&&<ApiKeyModal onDone={handleKeySaved} onSkip={handleKeySkip}/>}
 
       {/* Topbar — cardinal masthead */}
       <div style={{background:'var(--red)',padding:'0 36px',flexShrink:0}}>
@@ -1680,6 +1798,7 @@ function App() {
             <span style={{fontFamily:"'Spectral',serif",fontStyle:'italic',fontSize:12.5,color:'rgba(255,255,255,0.8)',letterSpacing:'0.01em'}}>Academic Talent Location And Sourcing</span>
           </div>
           <div style={{display:'flex',alignItems:'center',gap:18}}>
+            {keyNeeded&&<button className="about-btn" onClick={()=>setKeyModalOpen(true)} style={{padding:'5px 16px',border:'1px solid rgba(255,255,255,0.5)',borderRadius:999,background:'rgba(255,255,255,0.12)',color:'#fff',fontSize:12.5,fontWeight:600,letterSpacing:'0.04em',cursor:'pointer'}}>Add API key</button>}
             <button className="about-btn" onClick={()=>setAboutOpen(true)} style={{padding:'5px 16px',border:'1px solid rgba(255,255,255,0.5)',borderRadius:999,background:'transparent',color:'#fff',fontSize:12.5,fontWeight:600,letterSpacing:'0.04em',cursor:'pointer'}}>About</button>
           </div>
         </div>

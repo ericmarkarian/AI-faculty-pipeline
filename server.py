@@ -14,8 +14,9 @@ import threading
 import time
 from collections import OrderedDict
 
+import requests
 from dotenv import load_dotenv
-from flask import Flask, Response, jsonify, request, send_file
+from flask import Flask, Response, jsonify, request, send_file, send_from_directory
 
 load_dotenv()
 
@@ -40,8 +41,6 @@ _MP_CTX = mp.get_context("spawn")
 
 def _pipeline_child(kind: str, payload: dict, mpq) -> None:
     """Entry point that runs in the spawned process; streams results back via mpq."""
-    import faculty_search
-
     def on_enriched(rec, completed, total):
         mpq.put({"type": "faculty", "data": rec, "completed": completed, "total": total})
 
@@ -49,6 +48,15 @@ def _pipeline_child(kind: str, payload: dict, mpq) -> None:
         mpq.put({"type": "qc_update", "data": rec})
 
     try:
+        # A per-request key (multi-user deployments) must land in the environment
+        # BEFORE faculty_search builds its OpenAI client at import time. The child
+        # is a fresh spawned process, so this never leaks across users or runs.
+        if payload.get("api_key"):
+            os.environ["OPENAI_API_KEY"] = payload["api_key"]
+        # Inside try so an import-time failure (e.g. missing API key) reaches the
+        # UI as its real error instead of "exited unexpectedly (likely out of memory)".
+        import faculty_search
+
         if kind == "names":
             faculty_search.run_pipeline_from_records(
                 payload["records"], discipline=payload["discipline"],
@@ -210,6 +218,85 @@ def require_auth():
         )
 
 
+# ─────────────────────────────────────────────
+# OpenAI API key management
+# The UI shows a first-open popup asking for the user's own OpenAI key. The key
+# is verified against the OpenAI API, kept in this process's environment (the
+# spawned pipeline children inherit it), and persisted to .env so it survives
+# restarts — the popup only appears until a working key has been saved.
+# ─────────────────────────────────────────────
+
+_ENV_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), ".env")
+
+
+def _save_key_to_env_file(key: str) -> None:
+    lines: list[str] = []
+    if os.path.exists(_ENV_FILE):
+        with open(_ENV_FILE, "r") as f:
+            lines = [l for l in f.read().splitlines()
+                     if not l.strip().startswith("OPENAI_API_KEY=")]
+    lines.append(f"OPENAI_API_KEY={key}")
+    with open(_ENV_FILE, "w") as f:
+        f.write("\n".join(lines) + "\n")
+
+
+@app.route("/api/key-status")
+def key_status():
+    return jsonify({"configured": bool(os.environ.get("OPENAI_API_KEY"))})
+
+
+@app.route("/api/key", methods=["POST"])
+def set_key():
+    key = ((request.json or {}).get("key") or "").strip()
+    # Copy-paste from a browser or email can smuggle in newlines, spaces, or
+    # smart quotes; real OpenAI keys are a single ASCII token.
+    key = "".join(key.split())
+    if not key:
+        return jsonify({"error": "No key provided."}), 400
+    if not key.isascii():
+        return jsonify({"error": "That doesn't look like a valid key — it contains unexpected characters. "
+                                 "Re-copy it from platform.openai.com and try again."}), 400
+    last_exc: Exception | None = None
+    for attempt in range(2):  # one retry absorbs transient network blips
+        try:
+            resp = requests.get(
+                "https://api.openai.com/v1/models",
+                headers={"Authorization": f"Bearer {key}"},
+                timeout=15,
+            )
+            break
+        except requests.RequestException as exc:
+            last_exc = exc
+            time.sleep(1)
+    else:
+        print(f"[key check] could not reach OpenAI: {last_exc!r}")
+        return jsonify({"error": "Could not reach OpenAI to verify the key — check your internet connection "
+                                 "and try again."}), 502
+    if resp.status_code == 401:
+        return jsonify({"error": "OpenAI rejected this key. Double-check it and try again."}), 400
+    if resp.status_code != 200:
+        return jsonify({"error": f"Unexpected response from OpenAI (HTTP {resp.status_code})."}), 502
+    # On Render (or any shared deployment — Render sets RENDER=true) the key must
+    # stay per-visitor: the browser stores it and sends it with each run request.
+    # Never put it in the server environment there, where it would silently pay
+    # for every other visitor's runs.
+    if not os.environ.get("RENDER"):
+        os.environ["OPENAI_API_KEY"] = key
+        try:
+            _save_key_to_env_file(key)
+        except OSError:
+            pass  # key still works for this session even if .env is unwritable
+    return jsonify({"ok": True})
+
+
+_ASSETS_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "assets")
+
+
+@app.route("/assets/<path:filename>")
+def assets(filename):
+    return send_from_directory(_ASSETS_DIR, filename)
+
+
 @app.route("/")
 def index():
     with open("medfaculty.html", "r") as f:
@@ -223,12 +310,17 @@ def index():
 def start_run():
     global _run_queue, _pipeline_running
 
+    data    = request.json or {}
+    api_key = (data.get("api_key") or "").strip() or os.environ.get("OPENAI_API_KEY")
+    if not api_key:
+        return jsonify({"error": "No OpenAI API key saved — add your key to run a search.",
+                        "code": "no_api_key"}), 400
+
     with _run_lock:
         if _pipeline_running:
             return jsonify({"error": "Pipeline already running"}), 409
         _pipeline_running = True
 
-    data           = request.json or {}
     schools        = _normalize_schools(data.get("schools") or ["Stanford"])
     discipline     = data.get("discipline") or "Pediatric Endocrinology"
     considerations = data.get("considerations") or ""
@@ -239,7 +331,8 @@ def start_run():
         try:
             _spawn_and_forward(
                 "search",
-                {"schools": schools, "discipline": discipline, "considerations": considerations},
+                {"schools": schools, "discipline": discipline, "considerations": considerations,
+                 "api_key": api_key},
                 _run_queue,
             )
         finally:
@@ -352,12 +445,17 @@ def stream():
 def start_names_run():
     global _names_run_queue, _names_pipeline_running
 
+    data    = request.json or {}
+    api_key = (data.get("api_key") or "").strip() or os.environ.get("OPENAI_API_KEY")
+    if not api_key:
+        return jsonify({"error": "No OpenAI API key saved — add your key to run a lookup.",
+                        "code": "no_api_key"}), 400
+
     with _names_run_lock:
         if _names_pipeline_running:
             return jsonify({"error": "Names pipeline already running"}), 409
         _names_pipeline_running = True
 
-    data           = request.json or {}
     names          = data.get("names") or []
     discipline     = data.get("discipline") or ""
     considerations = data.get("considerations") or ""
@@ -386,7 +484,8 @@ def start_names_run():
         try:
             _spawn_and_forward(
                 "names",
-                {"records": records, "discipline": discipline, "considerations": considerations},
+                {"records": records, "discipline": discipline, "considerations": considerations,
+                 "api_key": api_key},
                 _names_run_queue,
             )
         finally:
