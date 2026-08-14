@@ -96,51 +96,13 @@ Columns: `full_name`, `title`, `profile_url`, `school`, `subspecialty`, `email`,
 | [docs/USAGE.md](docs/USAGE.md) | Setup, both run modes, adding institutions/specialties, troubleshooting |
 | [docs/PRD.md](docs/PRD.md) | Product requirements and scope |
 
-## Golden Set Tests (5 people)
+## Tests
 
-A zero-network test harness validates roles extraction quality and NIH grant enrichment against a fixed golden set. Tests run fully offline after a one-time fixture capture.
-
-| Name | Archetype |
-|------|-----------|
-| David Maahs | high-signal (roles across all categories) |
-| Anna Gloyn | editorial-heavy |
-| Tandy Aye | society-heavy |
-| Darrell Wilson | grant-heavy |
-| Holly Cooper | low-signal (zero roles — hallucination guard) |
-
-### Step 1: Capture fixtures (once, requires network)
+The suite runs fully offline behind a socket-level network guard — any attempted network call fails the test immediately. Fixture-based replay providers stand in for live sources.
 
 ```bash
-pip install pytest pyyaml
-
-# Capture roles fixtures
-python -m tools.capture_fixture_roles --name "David Maahs"   --school "Stanford" --out tests/fixtures/roles/david_maahs.json
-python -m tools.capture_fixture_roles --name "Anna Gloyn"    --school "Stanford" --out tests/fixtures/roles/anna_gloyn.json
-python -m tools.capture_fixture_roles --name "Tandy Aye"     --school "Stanford" --out tests/fixtures/roles/tandy_aye.json
-python -m tools.capture_fixture_roles --name "Darrell Wilson" --school "Stanford" --out tests/fixtures/roles/darrell_wilson.json
-python -m tools.capture_fixture_roles --name "Holly Cooper"  --school "Stanford" --out tests/fixtures/roles/holly_cooper.json
-
-# Capture NIH fixtures
-python -m tools.capture_fixture_nih --name "Darrell Wilson" --school "Stanford" --out tests/fixtures/nih/darrell_wilson.json
-```
-
-### Step 2: Run tests offline (no network)
-
-```bash
-pytest tests/test_golden_set.py -v    # golden set only
-pytest                                # full suite
-```
-
-Tests fail immediately if any network call is attempted. The audit report prints at the end of each run.
-
-### Snapshot regression
-
-On first run, snapshots are written to `tests/snapshots/`. On subsequent runs, any change in extracted roles produces a readable unified diff so prompt/model regressions are visible.
-
-To reset a snapshot after an intentional change:
-```bash
-rm tests/snapshots/<slug>.json
-pytest tests/test_golden_set.py -v  # re-captures baseline
+pip install pytest
+pytest
 ```
 
 ## Known Limitations
@@ -168,10 +130,8 @@ providers/
   live.py                         # Live network implementations (NIH, Scopus, OpenAlex, roles)
   replay.py                       # Fixture-based replays for offline tests
 tools/
-  capture_fixture_roles.py        # CLI: capture roles fixture once
-  capture_fixture_nih.py          # CLI: capture NIH fixture once
   discover_faculty_urls.py        # CLI: bulk directory-URL discovery
-tests/                            # Offline suite: golden set, merge, scraper sources
+tests/                            # Offline suite (network-blocked): merge, scraper, email extraction
 docs/                             # OVERVIEW · ARCHITECTURE · USAGE · PRD
 Procfile, render.yaml             # Deployment (gunicorn on Render)
 ```

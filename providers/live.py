@@ -41,7 +41,7 @@ _INSTITUTION_NIH_NAMES: dict[str, list[str]] = {
     "Ohio State University College of Medicine / Nationwide Children's":               ["OHIO STATE UNIVERSITY", "NATIONWIDE CHILDREN"],
     "UC San Diego School of Medicine / Rady Children's Hospital":                      ["UNIVERSITY OF CALIFORNIA SAN DIEGO", "RADY CHILDREN"],
     "University of Pittsburgh School of Medicine / UPMC Children's Hospital":          ["UNIVERSITY OF PITTSBURGH", "UPMC", "CHILDREN'S HOSPITAL OF PITTSBURGH"],
-    "David Geffen School of Medicine at UCLA / Mattel Children's Hospital":            ["UNIVERSITY OF CALIFORNIA LOS ANGELES", "UCLA", "MATTEL CHILDREN"],
+    "Casey Geffen School of Medicine at UCLA / Mattel Children's Hospital":            ["UNIVERSITY OF CALIFORNIA LOS ANGELES", "UCLA", "MATTEL CHILDREN"],
     "Vanderbilt University School of Medicine / Monroe Carell Jr. Children's":         ["VANDERBILT UNIVERSITY", "MONROE CARELL"],
     "Medical University of South Carolina":                                            ["MEDICAL UNIVERSITY OF SOUTH CAROLINA", "MUSC"],
     "UT Southwestern Medical Center / Children's Medical Center Dallas":               ["UNIVERSITY OF TEXAS SOUTHWESTERN", "UT SOUTHWESTERN", "CHILDREN'S MEDICAL CENTER DALLAS"],
@@ -78,7 +78,7 @@ _INSTITUTION_KEYWORDS: dict[str, str] = {
     "Ohio State University College of Medicine / Nationwide Children's":               "ohio state",
     "UC San Diego School of Medicine / Rady Children's Hospital":                      "rady children",
     "University of Pittsburgh School of Medicine / UPMC Children's Hospital":          "pittsburgh",
-    "David Geffen School of Medicine at UCLA / Mattel Children's Hospital":            "los angeles",
+    "Casey Geffen School of Medicine at UCLA / Mattel Children's Hospital":            "los angeles",
     "Vanderbilt University School of Medicine / Monroe Carell Jr. Children's":         "vanderbilt",
     "Medical University of South Carolina":                                            "south carolina",
     "UT Southwestern Medical Center / Children's Medical Center Dallas":               "southwestern",
@@ -230,7 +230,7 @@ No markdown fences, no explanation — only the JSON object.
 def _clean_name_parts(full_name: str) -> list[str]:
     # Use the shared comprehensive credential set (_CREDENTIALS, defined below) and an
     # uppercase compare so the NIH name parse strips the same degrees/suffixes as the
-    # Scopus/h-index parse. Otherwise e.g. "Anna Gloyn, DPhil" parses a last name of
+    # Scopus/h-index parse. Otherwise e.g. "Riley Chen, DPhil" parses a last name of
     # "DPhil" (and "John Smith Jr" a last name of "Jr") and finds no NIH grants.
     return [p.strip(".,") for p in full_name.split()
             if p.strip(".,") and p.strip(".,").upper() not in _CREDENTIALS]
@@ -922,8 +922,8 @@ _CREDENTIALS = {
 def _parse_name_for_scopus(full_name: str) -> tuple[str, str, str]:
     """Return (first, middle_initial, last) stripped of credentials.
 
-    'Anna L. Gloyn, DPhil' → ('Anna', 'L', 'Gloyn')
-    'Anna Gloyn'           → ('Anna', '',  'Gloyn')
+    'Riley L. Chen, DPhil' → ('Riley', 'L', 'Chen')
+    'Riley Chen'           → ('Riley', '',  'Chen')
     'José M. Rodriguez'    → ('José', 'M', 'Rodriguez')
     """
     name = full_name.split(",")[0].strip()

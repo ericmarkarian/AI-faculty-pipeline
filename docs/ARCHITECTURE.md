@@ -266,7 +266,7 @@ These catch directory-structure breakage and runaway cost.
 All network sources sit behind abstract bases in [`providers/base.py`](../providers/base.py)
 (`ScraperProvider`, `NihProvider`, `RolesProvider`, `HIndexProvider`). `providers/live.py`
 holds the network implementations; `providers/replay.py` holds fixture-based replays used by
-the offline golden-set tests (see [USAGE.md](USAGE.md)). This is what lets the test suite run
+the offline test suite (see [USAGE.md](USAGE.md)). This is what lets the test suite run
 fully offline with a network guard.
 
 ---

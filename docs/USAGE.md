@@ -157,29 +157,16 @@ edit that file directly.
 
 ---
 
-## 6. Offline tests (golden set)
+## 6. Offline tests
 
-A zero-network test harness validates roles extraction and NIH enrichment against a fixed
-5-person golden set. Fixtures are captured once (requires network), then tests run fully
-offline behind a network guard.
+The test suite runs fully offline behind a socket-level network guard — any attempted
+network call fails the test immediately. Fixture-based replay providers stand in for
+live sources.
 
 ```bash
-pip install pytest pyyaml
-
-# One-time fixture capture (requires network):
-python -m tools.capture_fixture_roles --name "David Maahs" --school "Stanford" \
-    --out tests/fixtures/roles/david_maahs.json
-python -m tools.capture_fixture_nih   --name "Darrell Wilson" --school "Stanford" \
-    --out tests/fixtures/nih/darrell_wilson.json
-# ...repeat for the other golden-set members (see top-level README)
-
-# Run offline:
-pytest tests/test_golden_set.py -v
+pip install pytest
+pytest
 ```
-
-Tests fail immediately if any network call is attempted. Snapshot regressions print a
-unified diff so prompt/model changes are visible; delete a snapshot under `tests/snapshots/`
-to re-baseline after an intentional change.
 
 ---
 

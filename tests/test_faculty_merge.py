@@ -27,16 +27,16 @@ _SCHOOL = "Stanford University School of Medicine"
 
 @pytest.mark.unit
 @pytest.mark.parametrize("raw,expected", [
-    ("Tandy Aye", "tandy aye"),
-    ("Tandy Aye, MD", "tandy aye"),
-    ("Tandy Aye MD, MPH", "tandy aye"),
-    ("  TANDY   AYE  ", "tandy aye"),
-    ("Dr. Tandy Aye", "tandy aye"),
-    ("Anna L. Gloyn, Ph.D.", "anna l gloyn"),
+    ("Jordan Vega", "jordan vega"),
+    ("Jordan Vega, MD", "jordan vega"),
+    ("Jordan Vega MD, MPH", "jordan vega"),
+    ("  JORDAN   VEGA  ", "jordan vega"),
+    ("Dr. Jordan Vega", "jordan vega"),
+    ("Riley L. Chen, Ph.D.", "riley l chen"),
     ("José Ramírez", "jose ramirez"),
     ("Mary O'Brien", "mary obrien"),
     ("Jane Smith-Jones", "jane smithjones"),
-    ("Aye, Tandy", "aye tandy"),
+    ("Vega, Jordan", "vega jordan"),
     ("", ""),
 ])
 def test_normalize_name(raw, expected):
@@ -52,20 +52,20 @@ def test_normalize_name_handles_none():
 
 @pytest.mark.unit
 def test_name_keys_ignore_middle_initial():
-    """'Anna Gloyn' and 'Anna L. Gloyn' share a first/last key."""
-    assert name_keys("Anna Gloyn")[1] == name_keys("Anna L. Gloyn")[1]
+    """'Riley Chen' and 'Riley L. Chen' share a first/last key."""
+    assert name_keys("Riley Chen")[1] == name_keys("Riley L. Chen")[1]
 
 
 @pytest.mark.unit
 def test_name_keys_ignore_name_order():
     """Directories that print 'Last, First' still match 'First Last'."""
-    assert name_keys("Aye, Tandy")[1] == name_keys("Tandy Aye")[1]
+    assert name_keys("Vega, Jordan")[1] == name_keys("Jordan Vega")[1]
 
 
 @pytest.mark.unit
 def test_name_keys_ignore_trailing_initial_in_inverted_names():
-    """'Gloyn, Anna L' (directory) still matches 'Anna Gloyn' (web search)."""
-    assert name_keys("Gloyn, Anna L")[1] == name_keys("Anna Gloyn")[1]
+    """'Chen, Riley L' (directory) still matches 'Riley Chen' (web search)."""
+    assert name_keys("Chen, Riley L")[1] == name_keys("Riley Chen")[1]
 
 
 @pytest.mark.unit
@@ -75,7 +75,7 @@ def test_name_keys_keep_single_letter_names_when_thats_all_there_is():
 
 @pytest.mark.unit
 def test_name_keys_distinguish_different_people():
-    assert name_keys("Tandy Aye")[1] != name_keys("David Maahs")[1]
+    assert name_keys("Jordan Vega")[1] != name_keys("Casey Morgan")[1]
 
 
 @pytest.mark.unit
@@ -89,13 +89,13 @@ def test_name_keys_single_token_name():
 @pytest.mark.unit
 def test_to_record_builds_full_record():
     record = to_record(
-        {"full_name": " Tandy Aye ", "title": " Professor ",
-         "profile_url": "(https://profiles.stanford.edu/tandy-aye)"},
+        {"full_name": " Jordan Vega ", "title": " Professor ",
+         "profile_url": "(https://profiles.stanford.edu/jordan-vega)"},
         _SCHOOL, SOURCE_UNIVERSITY,
     )
-    assert record["full_name"] == "Tandy Aye"
+    assert record["full_name"] == "Jordan Vega"
     assert record["title"] == "Professor"
-    assert record["profile_url"] == "https://profiles.stanford.edu/tandy-aye"
+    assert record["profile_url"] == "https://profiles.stanford.edu/jordan-vega"
     assert record["school"] == _SCHOOL
     assert record["subspecialty"] is None
     assert record["email"] is None
@@ -103,15 +103,15 @@ def test_to_record_builds_full_record():
 
 @pytest.mark.unit
 def test_to_record_accepts_name_alias():
-    record = to_record({"name": "Tandy Aye"}, _SCHOOL, SOURCE_WEB_SEARCH)
-    assert record["full_name"] == "Tandy Aye"
+    record = to_record({"name": "Jordan Vega"}, _SCHOOL, SOURCE_WEB_SEARCH)
+    assert record["full_name"] == "Jordan Vega"
 
 
 @pytest.mark.unit
 @pytest.mark.parametrize("item", [
     None,
-    "Tandy Aye",
-    ["Tandy Aye"],
+    "Jordan Vega",
+    ["Jordan Vega"],
     {},
     {"full_name": "   "},
     {"full_name": "-"},
@@ -125,7 +125,7 @@ def test_to_record_rejects_invalid_items(item):
 @pytest.mark.unit
 def test_to_record_blanks_become_none():
     record = to_record(
-        {"full_name": "Tandy Aye", "title": "", "profile_url": "", "email": "  "},
+        {"full_name": "Jordan Vega", "title": "", "profile_url": "", "email": "  "},
         _SCHOOL, SOURCE_UNIVERSITY,
     )
     assert record["title"] is None
@@ -145,18 +145,18 @@ def test_merge_empty_sources():
 def test_merge_unions_faculty_across_sources():
     """The whole point: web search adds people the directory scrape missed."""
     merged = merge_faculty([
-        (SOURCE_UNIVERSITY, [{"full_name": "Tandy Aye", "title": "Professor"}]),
-        (SOURCE_WEB_SEARCH, [{"full_name": "David Maahs", "title": "Professor"}]),
+        (SOURCE_UNIVERSITY, [{"full_name": "Jordan Vega", "title": "Professor"}]),
+        (SOURCE_WEB_SEARCH, [{"full_name": "Casey Morgan", "title": "Professor"}]),
     ], _SCHOOL)
-    assert {r["full_name"] for r in merged} == {"Tandy Aye", "David Maahs"}
+    assert {r["full_name"] for r in merged} == {"Jordan Vega", "Casey Morgan"}
 
 
 @pytest.mark.unit
 def test_merge_dedupes_same_person_across_sources():
     merged = merge_faculty([
-        (SOURCE_UNIVERSITY, [{"full_name": "Tandy Aye"}]),
-        (SOURCE_HOSPITAL, [{"full_name": "Tandy Aye"}]),
-        (SOURCE_WEB_SEARCH, [{"full_name": "Tandy Aye, MD"}]),
+        (SOURCE_UNIVERSITY, [{"full_name": "Jordan Vega"}]),
+        (SOURCE_HOSPITAL, [{"full_name": "Jordan Vega"}]),
+        (SOURCE_WEB_SEARCH, [{"full_name": "Jordan Vega, MD"}]),
     ], _SCHOOL)
     assert len(merged) == 1
 
@@ -164,18 +164,18 @@ def test_merge_dedupes_same_person_across_sources():
 @pytest.mark.unit
 def test_merge_dedupes_middle_initial_variant():
     merged = merge_faculty([
-        (SOURCE_UNIVERSITY, [{"full_name": "Anna L. Gloyn", "title": "Professor"}]),
-        (SOURCE_WEB_SEARCH, [{"full_name": "Anna Gloyn", "title": "Prof of Pediatrics"}]),
+        (SOURCE_UNIVERSITY, [{"full_name": "Riley L. Chen", "title": "Professor"}]),
+        (SOURCE_WEB_SEARCH, [{"full_name": "Riley Chen", "title": "Prof of Pediatrics"}]),
     ], _SCHOOL)
     assert len(merged) == 1
-    assert merged[0]["full_name"] == "Anna L. Gloyn"   # directory name wins
+    assert merged[0]["full_name"] == "Riley L. Chen"   # directory name wins
     assert merged[0]["title"] == "Professor"
 
 
 @pytest.mark.unit
 def test_merge_dedupes_within_a_single_source():
     merged = merge_faculty([
-        (SOURCE_UNIVERSITY, [{"full_name": "Tandy Aye"}, {"full_name": "Tandy Aye, MD"}]),
+        (SOURCE_UNIVERSITY, [{"full_name": "Jordan Vega"}, {"full_name": "Jordan Vega, MD"}]),
     ], _SCHOOL)
     assert len(merged) == 1
 
@@ -183,38 +183,38 @@ def test_merge_dedupes_within_a_single_source():
 @pytest.mark.unit
 def test_university_fields_beat_hospital_and_web_search():
     merged = merge_faculty([
-        (SOURCE_WEB_SEARCH, [{"full_name": "Tandy Aye", "title": "Pediatrician",
-                              "profile_url": "https://example.org/aye"}]),
-        (SOURCE_HOSPITAL, [{"full_name": "Tandy Aye", "title": "Attending",
-                            "profile_url": "https://stanfordchildrens.org/aye"}]),
-        (SOURCE_UNIVERSITY, [{"full_name": "Tandy Aye", "title": "Professor of Pediatrics",
-                              "profile_url": "https://profiles.stanford.edu/tandy-aye"}]),
+        (SOURCE_WEB_SEARCH, [{"full_name": "Jordan Vega", "title": "Pediatrician",
+                              "profile_url": "https://example.org/vega"}]),
+        (SOURCE_HOSPITAL, [{"full_name": "Jordan Vega", "title": "Attending",
+                            "profile_url": "https://stanfordchildrens.org/vega"}]),
+        (SOURCE_UNIVERSITY, [{"full_name": "Jordan Vega", "title": "Professor of Pediatrics",
+                              "profile_url": "https://profiles.stanford.edu/jordan-vega"}]),
     ], _SCHOOL)
     assert len(merged) == 1
     assert merged[0]["title"] == "Professor of Pediatrics"
-    assert merged[0]["profile_url"] == "https://profiles.stanford.edu/tandy-aye"
+    assert merged[0]["profile_url"] == "https://profiles.stanford.edu/jordan-vega"
 
 
 @pytest.mark.unit
 def test_lower_priority_source_fills_missing_fields_only():
     """Web search never overwrites directory data, but does fill its gaps."""
     merged = merge_faculty([
-        (SOURCE_UNIVERSITY, [{"full_name": "Tandy Aye", "title": "Professor",
+        (SOURCE_UNIVERSITY, [{"full_name": "Jordan Vega", "title": "Professor",
                               "profile_url": None}]),
-        (SOURCE_WEB_SEARCH, [{"full_name": "Tandy Aye", "title": "Pediatrician",
-                              "profile_url": "https://profiles.stanford.edu/tandy-aye",
-                              "email": "aye@stanford.edu",
+        (SOURCE_WEB_SEARCH, [{"full_name": "Jordan Vega", "title": "Pediatrician",
+                              "profile_url": "https://profiles.stanford.edu/jordan-vega",
+                              "email": "vega@stanford.edu",
                               "subspecialty": "Diabetes"}]),
     ], _SCHOOL)
     assert merged[0]["title"] == "Professor"
-    assert merged[0]["profile_url"] == "https://profiles.stanford.edu/tandy-aye"
-    assert merged[0]["email"] == "aye@stanford.edu"
+    assert merged[0]["profile_url"] == "https://profiles.stanford.edu/jordan-vega"
+    assert merged[0]["email"] == "vega@stanford.edu"
     assert merged[0]["subspecialty"] == "Diabetes"
 
 
 @pytest.mark.unit
 def test_precedence_is_independent_of_source_order():
-    args = [{"full_name": "Tandy Aye", "title": "Professor"}], [{"full_name": "Tandy Aye", "title": "Attending"}]
+    args = [{"full_name": "Jordan Vega", "title": "Professor"}], [{"full_name": "Jordan Vega", "title": "Attending"}]
     forward = merge_faculty([(SOURCE_UNIVERSITY, args[0]), (SOURCE_HOSPITAL, args[1])], _SCHOOL)
     reverse = merge_faculty([(SOURCE_HOSPITAL, args[1]), (SOURCE_UNIVERSITY, args[0])], _SCHOOL)
     assert forward[0]["title"] == reverse[0]["title"] == "Professor"
@@ -223,8 +223,8 @@ def test_precedence_is_independent_of_source_order():
 @pytest.mark.unit
 def test_legacy_unknown_source_outranks_web_search():
     merged = merge_faculty([
-        (SOURCE_UNKNOWN, [{"full_name": "Tandy Aye", "title": "Professor"}]),
-        (SOURCE_WEB_SEARCH, [{"full_name": "Tandy Aye", "title": "Pediatrician"}]),
+        (SOURCE_UNKNOWN, [{"full_name": "Jordan Vega", "title": "Professor"}]),
+        (SOURCE_WEB_SEARCH, [{"full_name": "Jordan Vega", "title": "Pediatrician"}]),
     ], _SCHOOL)
     assert merged[0]["title"] == "Professor"
 
@@ -232,12 +232,12 @@ def test_legacy_unknown_source_outranks_web_search():
 @pytest.mark.unit
 def test_discovery_source_records_every_contributor():
     merged = merge_faculty([
-        (SOURCE_UNIVERSITY, [{"full_name": "Tandy Aye"}]),
-        (SOURCE_WEB_SEARCH, [{"full_name": "Tandy Aye"}, {"full_name": "David Maahs"}]),
+        (SOURCE_UNIVERSITY, [{"full_name": "Jordan Vega"}]),
+        (SOURCE_WEB_SEARCH, [{"full_name": "Jordan Vega"}, {"full_name": "Casey Morgan"}]),
     ], _SCHOOL)
     by_name = {r["full_name"]: r for r in merged}
-    assert by_name["Tandy Aye"]["discovery_source"] == "university+web_search"
-    assert by_name["David Maahs"]["discovery_source"] == "web_search"
+    assert by_name["Jordan Vega"]["discovery_source"] == "university+web_search"
+    assert by_name["Casey Morgan"]["discovery_source"] == "web_search"
 
 
 @pytest.mark.unit
@@ -252,30 +252,30 @@ def test_merge_preserves_first_seen_order():
 @pytest.mark.unit
 def test_merge_skips_invalid_items_without_failing():
     merged = merge_faculty([
-        (SOURCE_UNIVERSITY, [None, "junk", {"full_name": ""}, {"full_name": "Tandy Aye"}]),
+        (SOURCE_UNIVERSITY, [None, "junk", {"full_name": ""}, {"full_name": "Jordan Vega"}]),
     ], _SCHOOL)
-    assert [r["full_name"] for r in merged] == ["Tandy Aye"]
+    assert [r["full_name"] for r in merged] == ["Jordan Vega"]
 
 
 @pytest.mark.unit
 def test_merge_does_not_mutate_inputs():
-    university = [{"full_name": "Tandy Aye", "title": "Professor"}]
-    web = [{"full_name": "Tandy Aye", "email": "aye@stanford.edu"}]
+    university = [{"full_name": "Jordan Vega", "title": "Professor"}]
+    web = [{"full_name": "Jordan Vega", "email": "vega@stanford.edu"}]
     merge_faculty([(SOURCE_UNIVERSITY, university), (SOURCE_WEB_SEARCH, web)], _SCHOOL)
-    assert university == [{"full_name": "Tandy Aye", "title": "Professor"}]
-    assert web == [{"full_name": "Tandy Aye", "email": "aye@stanford.edu"}]
+    assert university == [{"full_name": "Jordan Vega", "title": "Professor"}]
+    assert web == [{"full_name": "Jordan Vega", "email": "vega@stanford.edu"}]
 
 
 @pytest.mark.unit
 def test_unknown_source_label_is_accepted_at_lowest_priority():
     """An unrecognized label must not crash the merge."""
     merged = merge_faculty([
-        (SOURCE_UNIVERSITY, [{"full_name": "Tandy Aye", "title": "Professor"}]),
-        ("some_new_source", [{"full_name": "Tandy Aye", "title": "Other"},
+        (SOURCE_UNIVERSITY, [{"full_name": "Jordan Vega", "title": "Professor"}]),
+        ("some_new_source", [{"full_name": "Jordan Vega", "title": "Other"},
                              {"full_name": "New Person"}]),
     ], _SCHOOL)
     by_name = {r["full_name"]: r for r in merged}
-    assert by_name["Tandy Aye"]["title"] == "Professor"
+    assert by_name["Jordan Vega"]["title"] == "Professor"
     assert "New Person" in by_name
 
 
@@ -284,12 +284,12 @@ def test_unknown_source_label_is_accepted_at_lowest_priority():
 @pytest.mark.unit
 def test_dedupe_keeps_first_occurrence():
     records = [
-        {"full_name": "Tandy Aye", "school": _SCHOOL, "title": "Professor"},
-        {"full_name": "Tandy Aye, MD", "school": _SCHOOL, "title": "Attending"},
-        {"full_name": "David Maahs", "school": _SCHOOL},
+        {"full_name": "Jordan Vega", "school": _SCHOOL, "title": "Professor"},
+        {"full_name": "Jordan Vega, MD", "school": _SCHOOL, "title": "Attending"},
+        {"full_name": "Casey Morgan", "school": _SCHOOL},
     ]
     deduped = dedupe_by_name(records)
-    assert [r["full_name"] for r in deduped] == ["Tandy Aye", "David Maahs"]
+    assert [r["full_name"] for r in deduped] == ["Jordan Vega", "Casey Morgan"]
     assert deduped[0]["title"] == "Professor"
 
 
@@ -297,8 +297,8 @@ def test_dedupe_keeps_first_occurrence():
 def test_dedupe_is_scoped_per_school():
     """The same person can legitimately appear under two schools (joint appointment)."""
     records = [
-        {"full_name": "Tandy Aye", "school": "Stanford"},
-        {"full_name": "Tandy Aye", "school": "UCSF"},
+        {"full_name": "Jordan Vega", "school": "Stanford"},
+        {"full_name": "Jordan Vega", "school": "UCSF"},
     ]
     assert len(dedupe_by_name(records)) == 2
 
@@ -306,8 +306,8 @@ def test_dedupe_is_scoped_per_school():
 @pytest.mark.unit
 def test_dedupe_matches_middle_initial_and_inverted_names():
     records = [
-        {"full_name": "Anna L. Gloyn", "school": _SCHOOL},
-        {"full_name": "Gloyn, Anna", "school": _SCHOOL},
+        {"full_name": "Riley L. Chen", "school": _SCHOOL},
+        {"full_name": "Chen, Riley", "school": _SCHOOL},
     ]
     assert len(dedupe_by_name(records)) == 1
 
@@ -315,15 +315,15 @@ def test_dedupe_matches_middle_initial_and_inverted_names():
 @pytest.mark.unit
 def test_dedupe_drops_unnamed_records():
     records = [{"school": _SCHOOL}, {"full_name": "  ", "school": _SCHOOL},
-               {"full_name": "Tandy Aye", "school": _SCHOOL}]
-    assert [r["full_name"] for r in dedupe_by_name(records)] == ["Tandy Aye"]
+               {"full_name": "Jordan Vega", "school": _SCHOOL}]
+    assert [r["full_name"] for r in dedupe_by_name(records)] == ["Jordan Vega"]
 
 
 @pytest.mark.unit
 def test_dedupe_does_not_mutate_input():
-    records = [{"full_name": "Tandy Aye", "school": _SCHOOL}]
+    records = [{"full_name": "Jordan Vega", "school": _SCHOOL}]
     dedupe_by_name(records)
-    assert records == [{"full_name": "Tandy Aye", "school": _SCHOOL}]
+    assert records == [{"full_name": "Jordan Vega", "school": _SCHOOL}]
 
 
 # ── source_breakdown ──────────────────────────────────────────────────────────
@@ -349,7 +349,7 @@ def test_source_breakdown_of_empty_list():
 @pytest.mark.unit
 def test_every_record_carries_the_school():
     merged = merge_faculty([
-        (SOURCE_UNIVERSITY, [{"full_name": "Tandy Aye", "school": "Wrong School"}]),
-        (SOURCE_WEB_SEARCH, [{"full_name": "David Maahs"}]),
+        (SOURCE_UNIVERSITY, [{"full_name": "Jordan Vega", "school": "Wrong School"}]),
+        (SOURCE_WEB_SEARCH, [{"full_name": "Casey Morgan"}]),
     ], _SCHOOL)
     assert all(r["school"] == _SCHOOL for r in merged)

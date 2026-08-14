@@ -1,5 +1,5 @@
 """
-Pytest configuration for the golden set test suite.
+Pytest configuration for the offline test suite.
 
 - Adds project root and tests/ to sys.path.
 - Blocks all network calls (socket-level guard) — tests must use ReplayProvider.
@@ -22,10 +22,7 @@ def block_network(monkeypatch):
     """Fail immediately if any test attempts a real network call."""
     def _blocked(*args, **kwargs):
         raise RuntimeError(
-            "Network call blocked in tests!\n"
-            "Tests must use ReplayProvider. Run capture tools first:\n"
-            "  python -m tools.capture_fixture_roles --name NAME --school SCHOOL --out PATH\n"
-            "  python -m tools.capture_fixture_nih   --name NAME --school SCHOOL --out PATH"
+            "Network call blocked in tests! Tests must use fixture-based replay providers."
         )
 
     monkeypatch.setattr(socket, "getaddrinfo", _blocked)

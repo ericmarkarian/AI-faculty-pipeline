@@ -71,14 +71,14 @@ def test_corresponding_author_email_found(monkeypatch):
 
 
 def test_same_name_different_institution_rejected(monkeypatch):
-    # David T. Cooke (UC Davis) must not satisfy David W. Cooke (Hopkins).
+    # Casey T. Cooke (UC Davis) must not satisfy Casey W. Cooke (Hopkins).
     xml = _wrap(_article(
-        "Cooke", "David",
+        "Cooke", "Casey",
         "Division of General Thoracic Surgery, UC Davis Health, Sacramento. "
         "Electronic address: dtcooke@ucdavis.edu."))
     _mock_eutils(monkeypatch, ["1"], xml)
     p = PubmedEmailProvider()
-    assert p.get_email("David W. Cooke", "Johns Hopkins School of Medicine") is None
+    assert p.get_email("Casey W. Cooke", "Johns Hopkins School of Medicine") is None
 
 
 def test_other_authors_email_in_shared_affiliation_rejected(monkeypatch):
@@ -96,23 +96,23 @@ def test_other_authors_email_in_shared_affiliation_rejected(monkeypatch):
 def test_school_match_via_email_domain(monkeypatch):
     # Affiliation says only the hospital, but the domain is Harvard-affiliated.
     xml = _wrap(_article(
-        "Breault", "David",
+        "Breault", "Casey",
         "Division of Endocrinology, Boston Children's Hospital, Boston, MA. "
-        "Electronic address: david.breault@childrens.harvard.edu."))
+        "Electronic address: casey.breault@childrens.harvard.edu."))
     _mock_eutils(monkeypatch, ["1"], xml)
     p = PubmedEmailProvider()
-    assert (p.get_email("David Breault", "Harvard Medical School")
-            == "david.breault@childrens.harvard.edu")
+    assert (p.get_email("Casey Breault", "Harvard Medical School")
+            == "casey.breault@childrens.harvard.edu")
 
 
 def test_initial_plus_lastname_local_part_accepted(monkeypatch):
     xml = _wrap(_article(
-        "Maahs", "David",
+        "Morgan", "Casey",
         "Pediatric Endocrinology, Stanford University, Palo Alto. "
-        "Electronic address: dmaahs@stanford.edu."))
+        "Electronic address: cmorgan@stanford.edu."))
     _mock_eutils(monkeypatch, ["1"], xml)
     p = PubmedEmailProvider()
-    assert p.get_email("David Maahs", "Stanford University School of Medicine") == "dmaahs@stanford.edu"
+    assert p.get_email("Casey Morgan", "Stanford University School of Medicine") == "cmorgan@stanford.edu"
 
 
 def test_no_papers_returns_none(monkeypatch):
@@ -128,7 +128,7 @@ def test_wrong_author_name_ignored(monkeypatch):
         "Stanford University. Electronic address: jsmith@stanford.edu."))
     _mock_eutils(monkeypatch, ["1"], xml)
     p = PubmedEmailProvider()
-    assert p.get_email("Holly Cooper", "Stanford University School of Medicine") is None
+    assert p.get_email("Avery Blake", "Stanford University School of Medicine") is None
 
 
 def test_api_error_returns_none(monkeypatch):

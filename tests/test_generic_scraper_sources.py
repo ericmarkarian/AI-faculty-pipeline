@@ -53,53 +53,53 @@ def _stub_sources(monkeypatch, *, html_names=(), web_names=(), html_error=None, 
 
 @pytest.mark.unit
 def test_runs_both_sources_and_unions_results(scraper, monkeypatch):
-    calls = _stub_sources(monkeypatch, html_names=["Tandy Aye"], web_names=["David Maahs"])
+    calls = _stub_sources(monkeypatch, html_names=["Jordan Vega"], web_names=["Casey Morgan"])
     records = scraper.get_faculty(_SCHOOL, _DISCIPLINE)
 
     assert calls["html"] == 1 and calls["web"] == 1
-    assert {r["full_name"] for r in records} == {"Tandy Aye", "David Maahs"}
+    assert {r["full_name"] for r in records} == {"Jordan Vega", "Casey Morgan"}
 
 
 @pytest.mark.unit
 def test_web_search_runs_even_when_directory_scrape_succeeds(scraper, monkeypatch):
     """The old behavior — web search only on failure — is what caused batch/manual drift."""
-    calls = _stub_sources(monkeypatch, html_names=["Tandy Aye"], web_names=[])
+    calls = _stub_sources(monkeypatch, html_names=["Jordan Vega"], web_names=[])
     scraper.get_faculty(_SCHOOL, _DISCIPLINE)
     assert calls["web"] == 1
 
 
 @pytest.mark.unit
 def test_overlapping_people_are_deduplicated(scraper, monkeypatch):
-    _stub_sources(monkeypatch, html_names=["Anna L. Gloyn"], web_names=["Anna Gloyn, PhD"])
+    _stub_sources(monkeypatch, html_names=["Riley L. Chen"], web_names=["Riley Chen, PhD"])
     records = scraper.get_faculty(_SCHOOL, _DISCIPLINE)
     assert len(records) == 1
-    assert records[0]["full_name"] == "Anna L. Gloyn"
+    assert records[0]["full_name"] == "Riley L. Chen"
     assert records[0]["discovery_source"] == f"{SOURCE_UNIVERSITY}+{SOURCE_WEB_SEARCH}"
 
 
 @pytest.mark.unit
 def test_web_search_results_survive_a_failed_directory_fetch(scraper, monkeypatch):
     _stub_sources(monkeypatch, html_error=RuntimeError("browser crashed"),
-                  web_names=["David Maahs"])
+                  web_names=["Casey Morgan"])
     records = scraper.get_faculty(_SCHOOL, _DISCIPLINE)
-    assert [r["full_name"] for r in records] == ["David Maahs"]
+    assert [r["full_name"] for r in records] == ["Casey Morgan"]
 
 
 @pytest.mark.unit
 def test_directory_results_survive_a_failed_web_search(scraper, monkeypatch):
-    _stub_sources(monkeypatch, html_names=["Tandy Aye"], web_error=RuntimeError("rate limited"))
+    _stub_sources(monkeypatch, html_names=["Jordan Vega"], web_error=RuntimeError("rate limited"))
     records = scraper.get_faculty(_SCHOOL, _DISCIPLINE)
-    assert [r["full_name"] for r in records] == ["Tandy Aye"]
+    assert [r["full_name"] for r in records] == ["Jordan Vega"]
 
 
 @pytest.mark.unit
 def test_web_search_runs_when_no_directory_url_is_known(scraper, monkeypatch):
     """No configured or discoverable URL used to mean zero faculty; now web search still runs."""
-    calls = _stub_sources(monkeypatch, web_names=["David Maahs"])
+    calls = _stub_sources(monkeypatch, web_names=["Casey Morgan"])
     monkeypatch.setattr(scraper, "_get_url_sources", lambda school, discipline: [])
     records = scraper.get_faculty(_SCHOOL, _DISCIPLINE)
     assert calls["html"] == 0 and calls["web"] == 1
-    assert [r["full_name"] for r in records] == ["David Maahs"]
+    assert [r["full_name"] for r in records] == ["Casey Morgan"]
 
 
 @pytest.mark.unit
@@ -108,16 +108,16 @@ def test_web_search_can_be_disabled(monkeypatch, tmp_path):
     instance = gfs.GenericFacultyScraper(urls_path=str(tmp_path / "urls.json"),
                                          request_delay=0.0, use_web_search=False)
     instance._urls = {_DISCIPLINE: {_SCHOOL: {"university_url": "https://med.stanford.edu/peds"}}}
-    calls = _stub_sources(monkeypatch, html_names=["Tandy Aye"], web_names=["David Maahs"])
+    calls = _stub_sources(monkeypatch, html_names=["Jordan Vega"], web_names=["Casey Morgan"])
 
     records = instance.get_faculty(_SCHOOL, _DISCIPLINE)
     assert calls["web"] == 0
-    assert [r["full_name"] for r in records] == ["Tandy Aye"]
+    assert [r["full_name"] for r in records] == ["Jordan Vega"]
 
 
 @pytest.mark.unit
 def test_records_carry_school_and_discovery_source(scraper, monkeypatch):
-    _stub_sources(monkeypatch, html_names=["Tandy Aye"], web_names=["David Maahs"])
+    _stub_sources(monkeypatch, html_names=["Jordan Vega"], web_names=["Casey Morgan"])
     records = scraper.get_faculty(_SCHOOL, _DISCIPLINE)
     assert all(r["school"] == _SCHOOL for r in records)
     assert {r["discovery_source"] for r in records} == {SOURCE_UNIVERSITY, SOURCE_WEB_SEARCH}
@@ -127,11 +127,11 @@ def test_records_carry_school_and_discovery_source(scraper, monkeypatch):
 
 @pytest.mark.unit
 @pytest.mark.parametrize("raw,expected_names", [
-    ('[{"full_name": "Tandy Aye"}]', ["Tandy Aye"]),
-    ('```json\n[{"full_name": "Tandy Aye"}]\n```', ["Tandy Aye"]),
-    ('Here you go:\n[{"full_name": "Tandy Aye"}]', ["Tandy Aye"]),
+    ('[{"full_name": "Jordan Vega"}]', ["Jordan Vega"]),
+    ('```json\n[{"full_name": "Jordan Vega"}]\n```', ["Jordan Vega"]),
+    ('Here you go:\n[{"full_name": "Jordan Vega"}]', ["Jordan Vega"]),
     # truncated output — keep the complete prefix instead of losing the whole roster
-    ('[{"full_name": "Tandy Aye"}, {"full_name": "David Ma', ["Tandy Aye"]),
+    ('[{"full_name": "Jordan Vega"}, {"full_name": "Casey Ma', ["Jordan Vega"]),
     ("no json at all", []),
     ("", []),
 ])

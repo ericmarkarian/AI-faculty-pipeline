@@ -43,7 +43,7 @@ _UNRANKED_PRIORITY = max(SOURCE_PRIORITY.values()) + 1
 _RECORD_FIELDS = ("full_name", "title", "profile_url", "school", "subspecialty", "email")
 
 # Degrees / honorifics that appear on one source's spelling of a name but not
-# another's ("Tandy Aye" vs "Tandy Aye, MD"). Generational suffixes (Jr/III) are
+# another's ("Jordan Vega" vs "Jordan Vega, MD"). Generational suffixes (Jr/III) are
 # deliberately NOT stripped — they distinguish real people.
 _NAME_NOISE_TOKENS = frozenset({
     "dr", "prof", "professor",
@@ -90,7 +90,7 @@ def name_keys(name: str | None) -> tuple[str, str]:
 
     exact_key — the fully normalized name.
     pair_key  — the first and last multi-letter tokens, sorted, so that
-                "Anna L. Gloyn", "Anna Gloyn", "Gloyn, Anna" and "Gloyn, Anna L"
+                "Riley L. Chen", "Riley Chen", "Chen, Riley" and "Chen, Riley L"
                 all collide. Middle initials and "Last, First" ordering are the
                 two ways directories and web search disagree about one person.
     """
@@ -215,8 +215,8 @@ def merge_faculty(
 def dedupe_by_name(records: Sequence[dict]) -> list[dict]:
     """Drop repeat appearances of the same person within a school, keeping the first.
 
-    Uses the same name matching as merge_faculty, so "Anna L. Gloyn" and
-    "Gloyn, Anna" collapse. Records without a usable name are dropped. The same
+    Uses the same name matching as merge_faculty, so "Riley L. Chen" and
+    "Chen, Riley" collapse. Records without a usable name are dropped. The same
     person at two schools is kept twice — joint appointments are real.
     """
     seen: set[tuple[str, str]] = set()
