@@ -1,28 +1,26 @@
-# ATLAS — AI Faculty Search Pipeline
+# ATLAS — Equitable Faculty Discovery for Academic Medicine
 
-**ATLAS** (**A**cademic **T**alent **L**ocation **A**nd **S**ourcing) is an AI agent pipeline that finds and profiles faculty across medical institutions. Give it a **discipline** and a set of **institutions**; it returns a structured, source-linked dataset of every matching faculty member — in minutes rather than hours. Built at Stanford Clinical Informatics.
+**ATLAS** (**A**cademic **T**alent **L**ocation **A**nd **S**ourcing) is an open-source tool built to make faculty recruitment in academic medicine more equitable. Faculty searches today run on informal, word-of-mouth networks — "who do we know?" — which systematically overlooks qualified candidates outside a search committee's existing circles, regardless of merit. ATLAS replaces that with a systematic sweep: give it a **discipline** and a set of **institutions**, and it returns a structured, source-linked profile of *every* matching faculty member — in minutes rather than the hours of hand-searching directories, cross-referencing NIH databases, and verifying credentials one person at a time.
 
-## Why it exists
+Built at Stanford Clinical Informatics. Free to use, modify, and deploy under the [MIT License](LICENSE).
 
-Faculty recruiting in academic medicine runs on informal, word-of-mouth networks. That systematically overlooks qualified candidates outside an institution's existing network, regardless of merit. The manual alternative is a recruiter spending hours per specialty hand-searching faculty directories, cross-referencing NIH databases, and verifying credentials one person at a time.
+## The equity problem ATLAS addresses
 
-ATLAS replaces "who do we know" with a systematic sweep, then enriches each person with **objective, sourced metrics** — NIH grant history, h-index, named professional roles (editorial boards, society offices, institutional leadership, training-program directorships), email, and education.
+Who gets recruited for faculty positions, invited to speak, or tapped for leadership in academic medicine depends heavily on who is already visible to the people searching. Informal networks reproduce themselves: candidates at less-connected institutions, from underrepresented backgrounds, or simply outside a committee's orbit never make the list — not because they lack qualifications, but because nobody looked.
 
-### Who uses it, and for what
+ATLAS makes the looking systematic:
 
-- **Search committees and recruiters** — build a complete candidate pool for an open position: "every Pediatric Endocrinology faculty member at these 12 institutions," with funding and leadership signals attached, rather than a shortlist of known names.
+- **Complete candidate pools, not shortlists of known names** — every faculty member in the discipline at the institutions searched, with the same data collected for each.
+- **Objective, sourced metrics** — NIH grant history, h-index, named professional roles (editorial boards, society offices, institutional leadership, training-program directorships), education, and contact information — each traceable to a named external source.
+- **Filter, don't rank** — ATLAS is intentionally **not** a scoring or evaluation system. Users explore by concrete criteria; the system never emits an ordered list implying relative merit, and no composite "quality score" exists anywhere in it.
+- **Transparency and verification** — every claim carries a green / yellow / red confidence badge from an independent QC pass, so human judgment stays informed rather than replaced.
+
+### Who it's for
+
+- **Search committees and recruiters** — build the full candidate pool for an open position: "every Pediatric Endocrinology faculty member at these 12 institutions," with funding and leadership signals attached.
 - **Division and department leadership** — survey a specialty's national landscape: who holds society and editorial roles, where NIH-funded investigators are concentrated.
-- **Program and grant teams** — assemble reviewer pools, speaker lists, or collaborator shortlists filtered by concrete criteria (active NIH funding, training-program directorship).
+- **Program and grant teams** — assemble reviewer pools, speaker lists, or collaborator shortlists filtered by concrete criteria.
 - **Named-list enrichment** — already have candidates? Names mode skips discovery and enriches a hand-supplied list of name + institution pairs.
-
-### Design principle: discovery, not ranking
-
-ATLAS is intentionally **not** an evaluation or scoring system.
-
-- **Objective metrics only** — verifiable data from named external databases. No composite "quality score."
-- **Filter, don't rank** — users explore by criteria; the system never emits an ordered list implying relative merit.
-- **Transparency** — every data point traces back to its source, and every claim carries a green / yellow / red confidence badge from an independent verification pass.
-- **Bias reduction by design** — surfacing *all* matching faculty regardless of network connection is the point.
 
 ## How it works
 
@@ -41,23 +39,15 @@ Every record carries a `discovery_source` (`university`, `web_search`, `universi
 ```bash
 pip install -r requirements.txt
 playwright install chromium     # one-time browser download for the scraper
-```
-
-Set credentials in a `.env` file in the repo root (loaded automatically — never commit real keys):
-
-```bash
-OPENAI_API_KEY=sk-...
-SCOPUS_API_KEY=...
-```
-
-### Run from the browser (recommended)
-
-```bash
 python3 server.py
 # → [Server] Starting at http://localhost:5050
 ```
 
-Two modes: a **discipline sweep** across selected institutions, and **names mode** for a hand-supplied list. Results stream in live over SSE — each card appears as the person is enriched, then updates again with its QC badge.
+On first open, ATLAS asks for your **OpenAI API key** in the app (create one at [platform.openai.com/api-keys](https://platform.openai.com/api-keys)). The key is verified, saved to a local `.env` on your machine, and never leaves it except to call OpenAI — you won't be asked again. Bring-your-own-key means anyone can run ATLAS on their own OpenAI account; no shared credentials involved.
+
+Optional keys (Scopus, PubMed, OpenAlex — see Configuration) can be added to the same `.env` file by hand.
+
+Two modes are available in the browser: a **discipline sweep** across selected institutions, and **names mode** for a hand-supplied list. Results stream in live — each card appears as the person is enriched, then updates with its QC badge.
 
 ### Run from the command line
 
@@ -73,7 +63,7 @@ Or call `run_pipeline(schools=..., discipline=...)` / `run_pipeline_from_records
 
 | Variable | Required? | Used for |
 |----------|-----------|----------|
-| `OPENAI_API_KEY` | **Yes** | Discovery, roles extraction, profile parsing, QC |
+| `OPENAI_API_KEY` | **Yes** — the app prompts for it on first open | Discovery, roles extraction, profile parsing, QC |
 | `SCOPUS_API_KEY` | Recommended | Primary h-index source; falls back to OpenAlex without it |
 | `SCOPUS_INSTTOKEN` | Optional | Scopus institutional token (off-network access) |
 | `NCBI_API_KEY` / `PUBMED_API_KEY` | Optional | Higher PubMed rate limit (email fallback lookups) |
@@ -81,6 +71,8 @@ Or call `run_pipeline(schools=..., discipline=...)` / `run_pipeline_from_records
 | `AGENT1_WEB_SEARCH` | Optional | `0` runs Agent 1 from the scraped directory pages only. Default `1` — directory scrape **and** web search, unioned |
 | `SITE_PASSWORD` | Optional | If set, the web UI requires this password (HTTP basic auth) |
 | `PORT` | Optional | Web server port (default `5050`) |
+
+> **Shared deployments:** on a hosted instance (e.g. Render, which sets `RENDER=true`), a key entered in the app is kept in the visitor's own browser and sent per run — it is never stored server-side, so each visitor pays for their own searches.
 
 > **Scopus note:** the Scopus API generally requires your institution's network or VPN (or a valid `SCOPUS_INSTTOKEN`). If Scopus is unavailable the pipeline falls back to OpenAlex for h-index — it does not fail.
 
@@ -166,6 +158,7 @@ server.py                         # Flask app — SSE streaming, sweep + names m
 observe.py                        # Structured logging, cost tracking, alerting
 medfaculty.html                   # Web UI (React, served by server.py)
 frontend/                         # Standalone static results page + UI screenshots
+assets/                           # Builder photos for the About page
 providers/
   base.py                         # ScraperProvider / NihProvider / RolesProvider / HIndexProvider ABCs
   generic_faculty_scraper.py      # Agent 1: directory scrape + web search, unioned
@@ -182,3 +175,7 @@ tests/                            # Offline suite: golden set, merge, scraper so
 docs/                             # OVERVIEW · ARCHITECTURE · USAGE · PRD
 Procfile, render.yaml             # Deployment (gunicorn on Render)
 ```
+
+## License
+
+[MIT](LICENSE) © 2026 Eric Markarian and Chehan Wijayaratne. Use it, fork it, deploy it at your institution — attribution appreciated.
