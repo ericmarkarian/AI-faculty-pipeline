@@ -51,7 +51,7 @@ COST_PER_CALL = {
 ALERT_THRESHOLDS = {
     "min_faculty_expected": 10,
     "max_error_rate":       0.10,
-    "max_cost_usd":         5.00,
+    "max_cost_usd":         20.00,
     "min_nih_coverage":     0.30,
 }
 
