@@ -28,6 +28,7 @@ from urllib.parse import urljoin, urlparse
 from bs4 import BeautifulSoup
 from openai import OpenAI
 
+import observe
 from providers.base import ScraperProvider, FacultyRecord
 from providers.faculty_merge import SOURCE_WEB_SEARCH, merge_faculty, source_breakdown
 from providers.utils import CHROMIUM_LAUNCH_ARGS, _PLAYWRIGHT_SEM
@@ -299,7 +300,7 @@ class GenericFacultyScraper(ScraperProvider):
         self._delay = request_delay
         self._extraction_model = extraction_model
         self._use_web_search = _WEB_SEARCH_DEFAULT if use_web_search is None else use_web_search
-        self._client = OpenAI(api_key=os.environ.get("OPENAI_API_KEY"))
+        self._client = observe.instrument_client(OpenAI(api_key=os.environ.get("OPENAI_API_KEY")))
 
     def _discover_urls(self, school: str, discipline: str) -> list[tuple[str, str]]:
         """Ask GPT-4o with web search to find university + hospital faculty URLs, then cache."""

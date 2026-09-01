@@ -122,9 +122,88 @@ def add_cost(call_type: str, input_tokens: int = 0, output_tokens: int = 0) -> f
     cost = COST_PER_CALL.get(call_type, 0.0)
     cost += (input_tokens  / 1000) * COST_PER_CALL["openai_chat_input_per_1k"]
     cost += (output_tokens / 1000) * COST_PER_CALL["openai_chat_output_per_1k"]
-    with _metrics_lock:
-        _metrics["llm_cost_usd"] += cost
+    _accumulate_cost(cost)
     return cost
+
+
+# Per-model token rates ($ per 1M tokens). Longest prefix wins so a dated id
+# like "gpt-4o-mini-2024-07-18" matches gpt-4o-mini, not gpt-4o.
+MODEL_RATES = {
+    "gpt-4o-mini": {"input": 0.150, "output": 0.600},
+    "gpt-4o":      {"input": 2.50,  "output": 10.00},
+}
+
+
+def _accumulate_cost(cost: float) -> None:
+    """Add to the run total; warn once when the run crosses the cost threshold."""
+    with _metrics_lock:
+        before = _metrics.get("llm_cost_usd", 0.0)  # tolerate pre-start() use
+        _metrics["llm_cost_usd"] = before + cost
+    threshold = ALERT_THRESHOLDS["max_cost_usd"]
+    if before <= threshold < before + cost:
+        msg = f"COST_EXCEEDED: run has passed ${threshold:.2f} of estimated LLM spend (still running)"
+        print(f"\n[!] {msg}\n")
+        try:
+            log("alert", level="warning", alert=msg)
+        except Exception:  # noqa: BLE001 — metering must never break the pipeline
+            pass
+
+
+def add_usage(model: str, input_tokens: int, output_tokens: int, web_search: bool = False) -> float:
+    """Meter one LLM response from its reported token usage."""
+    rates = None
+    for prefix in sorted(MODEL_RATES, key=len, reverse=True):
+        if (model or "").startswith(prefix):
+            rates = MODEL_RATES[prefix]
+            break
+    cost = 0.0
+    if rates:
+        cost = (input_tokens / 1e6) * rates["input"] + (output_tokens / 1e6) * rates["output"]
+    if web_search:
+        cost += COST_PER_CALL["openai_responses_web_search"]
+    _accumulate_cost(cost)
+    return cost
+
+
+def instrument_client(client):
+    """Wrap an OpenAI client so every chat/responses call feeds the cost meter.
+
+    This is the single choke point for cost accounting — individual call sites
+    don't need to remember to meter. Metering failures never break the call.
+    """
+    def _record(response, kwargs):
+        try:
+            u = getattr(response, "usage", None)
+            if u is None:
+                return
+            inp = getattr(u, "input_tokens", None)   # Responses API
+            out = getattr(u, "output_tokens", None)
+            if inp is None:
+                inp = getattr(u, "prompt_tokens", 0)      # Chat Completions API
+                out = getattr(u, "completion_tokens", 0)
+            model = getattr(response, "model", None) or kwargs.get("model", "")
+            tools = kwargs.get("tools") or []
+            web_search = any(str(t.get("type", "")).startswith("web_search")
+                             for t in tools if isinstance(t, dict))
+            add_usage(model, int(inp or 0), int(out or 0), web_search=web_search)
+        except Exception:  # noqa: BLE001 — metering must never break the pipeline
+            pass
+
+    _orig_chat = client.chat.completions.create
+    def _chat_create(*args, **kwargs):
+        response = _orig_chat(*args, **kwargs)
+        _record(response, kwargs)
+        return response
+    client.chat.completions.create = _chat_create
+
+    _orig_responses = client.responses.create
+    def _responses_create(*args, **kwargs):
+        response = _orig_responses(*args, **kwargs)
+        _record(response, kwargs)
+        return response
+    client.responses.create = _responses_create
+
+    return client
 
 # ─────────────────────────────────────────────
 # MEMORY PROBE (for diagnosing Render OOM)

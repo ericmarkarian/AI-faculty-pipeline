@@ -16,6 +16,7 @@ from datetime import datetime, timezone
 
 from openai import OpenAI
 
+import observe
 from providers.base import RoleEvidence
 from providers.profile_scrapers.base import EducationEntry, ProfileData, ProfileScraper
 from providers.utils import (
@@ -130,7 +131,7 @@ class PlaywrightProfileScraper(ProfileScraper):
         api_key = os.environ.get("OPENAI_API_KEY")
         if not api_key:
             raise ValueError("OPENAI_API_KEY environment variable is not set")
-        self._client = OpenAI(api_key=api_key)
+        self._client = observe.instrument_client(OpenAI(api_key=api_key))
 
     def handles(self, profile_url: str) -> bool:
         return bool(profile_url)  # catch-all — accepts any non-empty URL

@@ -37,7 +37,7 @@ from providers.profile_scrapers.base import ProfileScraper
 from providers.pubmed_email import PubmedEmailProvider
 from providers.qc import verify_faculty_roles
 
-client = OpenAI(api_key=os.environ.get("OPENAI_API_KEY"))
+client = observe.instrument_client(OpenAI(api_key=os.environ.get("OPENAI_API_KEY")))
 SCOPUS_API_KEY = os.environ.get("SCOPUS_API_KEY")
 
 SCHOOLS = ["Stanford University School of Medicine"]
@@ -101,10 +101,9 @@ def responses_web_search(prompt: str) -> str:
                 for item in block.content:
                     if hasattr(item, "text"):
                         raw += item.text
-        cost = observe.add_cost("openai_responses_web_search")
+        # Cost (tokens + web-search fee) is metered by the instrumented client.
         observe.log("api_call", provider="openai_responses",
-                    latency_ms=int((time.time() - t0) * 1000),
-                    cost_usd=round(cost, 4), status="ok")
+                    latency_ms=int((time.time() - t0) * 1000), status="ok")
         return raw.strip()
     except Exception as e:
         observe.metric("api_errors", sub="openai")
