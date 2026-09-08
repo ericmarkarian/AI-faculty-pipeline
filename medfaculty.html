@@ -1441,6 +1441,19 @@ function App() {
   },[]);
   const handleKeySaved=useCallback((k)=>{ try{ localStorage.setItem('atlas_openai_key',k); }catch(e){} setKeyNeeded(false); setKeyModalOpen(false); },[]);
   const handleKeySkip =useCallback(()=>{ setKeyModalOpen(false); },[]);
+
+  /* ── Run recovery — the server keeps its own copy of every run, so closing
+     the tab loses nothing. On load, offer to restore the most recent run. ── */
+  const [resumeInfo,setResumeInfo]     = useState(null);
+  const [nlResumeInfo,setNlResumeInfo] = useState(null);
+  useEffect(()=>{
+    fetch('/api/last-run?kind=search').then(r=>r.json())
+      .then(d=>{ if((d.status==='running'||d.status==='completed')&&(d.records||[]).length) setResumeInfo(d); })
+      .catch(()=>{});
+    fetch('/api/last-run?kind=names').then(r=>r.json())
+      .then(d=>{ if((d.status==='running'||d.status==='completed')&&(d.records||[]).length) setNlResumeInfo(d); })
+      .catch(()=>{});
+  },[]);
   const esRef = useRef(null);
 
   /* ── Name Lookup tab state ── */
@@ -1616,6 +1629,10 @@ function App() {
       const resp=await fetch('/api/run-names',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({names:nlParsed,discipline:nlSpecialty,considerations:nlConsiderations,api_key:getStoredKey()||undefined})});
       if(!resp.ok){ const err=await resp.json(); if(err.code==='no_api_key'){ setKeyModalOpen(true); setNlLoading(false); return; } setNlErrorMsg(err.error||'Server error'); setNlLoading(false); return; }
     } catch(e){ setNlErrorMsg('Could not reach server. Is server.py running?'); setNlLoading(false); return; }
+    nlAttachStream();
+  };
+
+  const nlAttachStream = () => {
     const es=new EventSource('/api/stream-names'); nlEsRef.current=es;
     es.onmessage=e=>{
       const msg=JSON.parse(e.data);
@@ -1630,6 +1647,48 @@ function App() {
     };
     es.onerror=()=>{ setNlErrorMsg('Stream connection lost.'); es.close(); nlEsRef.current=null; setNlLoading(false); };
   };
+
+  /* ── Restore a run from the server's copy (tab was closed mid- or post-run) ── */
+  const restoreRun = (data) => {
+    resultsMapRef.current.clear(); pendingRef.current=[]; animatedNamesRef.current.clear();
+    (data.records||[]).forEach(r=>{ if(r.full_name){ resultsMapRef.current.set(r.full_name,r); animatedNamesRef.current.add(r.full_name); } });
+    if(data.discipline) setSpecialty(data.discipline);
+    setErrorMsg(''); setTick(t=>t+1); setResumeInfo(null); setActiveTab('search');
+    if(data.status==='running'){
+      setRan(false); setLoading(true);
+      const p=data.progress||{};
+      setProgress({done:p.done||resultsMapRef.current.size,total:p.total||0,phase:'Reconnected — enriching…'});
+      if(esRef.current){ esRef.current.close(); esRef.current=null; }
+      attachStream();
+    } else {
+      setLoading(false); setRan(true);
+      setProgress({done:resultsMapRef.current.size,total:resultsMapRef.current.size,phase:'Complete'});
+    }
+  };
+
+  const nlRestoreRun = (data) => {
+    nlResultsMapRef.current.clear(); nlPendingRef.current=[]; nlAnimatedNamesRef.current.clear();
+    (data.records||[]).forEach(r=>{ if(r.full_name){ nlResultsMapRef.current.set(r.full_name,r); nlAnimatedNamesRef.current.add(r.full_name); } });
+    setNlErrorMsg(''); setNlTick(t=>t+1); setNlResumeInfo(null); setActiveTab('lookup');
+    if(data.status==='running'){
+      setNlRan(false); setNlLoading(true);
+      const p=data.progress||{};
+      setNlProgress({done:p.done||nlResultsMapRef.current.size,total:p.total||0,phase:'Reconnected — enriching…'});
+      if(nlEsRef.current){ nlEsRef.current.close(); nlEsRef.current=null; }
+      nlAttachStream();
+    } else {
+      setNlLoading(false); setNlRan(true);
+      setNlProgress({done:nlResultsMapRef.current.size,total:nlResultsMapRef.current.size,phase:'Complete'});
+    }
+  };
+
+  /* Warn before closing the tab mid-run (results are recoverable, but the
+     live view is nicer to keep) */
+  useEffect(()=>{
+    const h=e=>{ if(loading||nlLoading){ e.preventDefault(); e.returnValue=''; } };
+    window.addEventListener('beforeunload',h);
+    return ()=>window.removeEventListener('beforeunload',h);
+  },[loading,nlLoading]);
 
   const displayed = useMemo(()=>
     applyFilters(Array.from(resultsMapRef.current.values()),
@@ -1807,6 +1866,30 @@ function App() {
           ))}
         </div>
       </div>
+
+      {/* Run recovery banner — the server kept the results; offer them back */}
+      {(resumeInfo||nlResumeInfo)&&(
+        <div style={{background:'var(--qy-bg)',borderBottom:'1px solid var(--qy-bd)',flexShrink:0}}>
+          <div style={{maxWidth:1440,margin:'0 auto',padding:'0 36px'}}>
+            {[[resumeInfo,'School search',restoreRun,setResumeInfo],[nlResumeInfo,'Name lookup',nlRestoreRun,setNlResumeInfo]].map(([info,label,restore,dismiss])=>info&&(
+              <div key={label} style={{display:'flex',alignItems:'center',gap:14,flexWrap:'wrap',padding:'9px 0'}}>
+                <span style={{fontSize:13,color:'var(--qy-tx)'}}>
+                  {info.status==='running'
+                    ? `${label} still running on the server`
+                    : `Your last ${label.toLowerCase()} finished`}
+                  {info.discipline?` — ${info.discipline}`:''} · {info.records.length} result{info.records.length===1?'':'s'} saved
+                </span>
+                <button onClick={()=>restore(info)} style={{padding:'4px 14px',border:'none',borderRadius:6,
+                  background:'var(--red)',color:'#fff',fontSize:12,fontWeight:700,cursor:'pointer'}}>
+                  {info.status==='running'?'Reconnect':'Restore results'}
+                </button>
+                <button onClick={()=>dismiss(null)} style={{padding:'4px 10px',border:'none',background:'none',
+                  color:'var(--qy-tx)',fontSize:12,cursor:'pointer',textDecoration:'underline'}}>Dismiss</button>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
 
       {/* Per-tab description — editorial standfirst */}
       <div style={{background:'var(--bg)',borderBottom:'1px solid var(--border-sub)',flexShrink:0}}>

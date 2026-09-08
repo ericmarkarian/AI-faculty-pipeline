@@ -73,7 +73,80 @@ def _pipeline_child(kind: str, payload: dict, mpq) -> None:
         mpq.put({"type": "__child_done__"})
 
 
-def _spawn_and_forward(kind: str, payload: dict, sse_queue: "queue.Queue") -> None:
+# ─────────────────────────────────────────────
+# Run persistence
+# The browser's live SSE view is just a viewer: the server keeps its own copy of
+# every run's records so closing the tab loses nothing. /api/last-run serves the
+# copy back, and completed runs are snapshotted to disk so they survive a worker
+# restart (though not a redeploy — Render's disk is ephemeral).
+# ─────────────────────────────────────────────
+
+_LAST_RUN_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "data")
+_last_runs_lock = threading.Lock()
+_last_runs: dict = {"search": None, "names": None}
+
+
+def _last_run_file(kind: str) -> str:
+    return os.path.join(_LAST_RUN_DIR, f"last_run_{kind}.json")
+
+
+def _start_run_state(kind: str, **meta) -> dict:
+    state = {"status": "running", "started_at": time.time(), "progress": None,
+             "error": None, "records": {}, **meta}
+    with _last_runs_lock:
+        _last_runs[kind] = state
+    return state
+
+
+def _run_state_apply(state: dict, msg: dict) -> None:
+    """Fold one pipeline message into the server-side copy of the run."""
+    mtype = msg.get("type")
+    data = msg.get("data") or {}
+    name = data.get("full_name")
+    with _last_runs_lock:
+        if mtype == "faculty" and name:
+            state["records"][name] = data
+            state["progress"] = {"done": msg.get("completed"), "total": msg.get("total")}
+        elif mtype == "qc_update" and name:
+            # Real runs re-send the full record here; merge so a badge-only
+            # update never erases fields we already have.
+            state["records"][name] = {**state["records"].get(name, {}), **data}
+        elif mtype == "error":
+            state["error"] = msg.get("message")
+
+
+def _finish_run_state(kind: str, state: dict) -> None:
+    with _last_runs_lock:
+        state["status"] = "error" if state["error"] else "completed"
+        snapshot = {k: (list(v.values()) if k == "records" else v) for k, v in state.items()}
+    try:
+        with open(_last_run_file(kind), "w") as f:
+            json.dump(snapshot, f)
+    except OSError:
+        pass  # persistence is best-effort; the in-memory copy still serves
+
+
+def _load_persisted_runs() -> None:
+    """On boot, reload completed runs so a worker restart doesn't lose them."""
+    for kind in _last_runs:
+        try:
+            with open(_last_run_file(kind), "r") as f:
+                snap = json.load(f)
+            snap["records"] = {r.get("full_name"): r for r in snap.get("records", [])
+                               if r.get("full_name")}
+            if snap.get("status") == "running":  # died mid-run with the old worker
+                snap["status"] = "error"
+                snap["error"] = snap.get("error") or "server restarted mid-run"
+            _last_runs[kind] = snap
+        except (OSError, ValueError):
+            continue
+
+
+_load_persisted_runs()
+
+
+def _spawn_and_forward(kind: str, payload: dict, sse_queue: "queue.Queue",
+                       run_state: dict) -> None:
     """Run the pipeline in a subprocess; forward its messages to the SSE queue.
     Always emits exactly one terminal {"type": "done"}; survives child OOM."""
     proc = None
@@ -87,20 +160,26 @@ def _spawn_and_forward(kind: str, payload: dict, sse_queue: "queue.Queue") -> No
             except queue.Empty:
                 if not proc.is_alive():
                     # child died without signaling — almost always an OOM kill
-                    sse_queue.put({"type": "error",
-                                   "message": "pipeline process exited unexpectedly (likely out of memory)"})
+                    msg = {"type": "error",
+                           "message": "pipeline process exited unexpectedly (likely out of memory)"}
+                    _run_state_apply(run_state, msg)
+                    sse_queue.put(msg)
                     break
                 continue
             if msg.get("type") == "__child_done__":
                 break
+            _run_state_apply(run_state, msg)
             sse_queue.put(msg)
     except Exception as exc:  # noqa: BLE001
-        sse_queue.put({"type": "error", "message": f"failed to start pipeline: {exc}"})
+        msg = {"type": "error", "message": f"failed to start pipeline: {exc}"}
+        _run_state_apply(run_state, msg)
+        sse_queue.put(msg)
     finally:
         if proc is not None:
             proc.join(timeout=20)
             if proc.is_alive():
                 proc.terminate()
+        _finish_run_state(kind, run_state)
         sse_queue.put({"type": "done"})
 
 # Map LCME/AOA school names (as displayed in the UI) → keys used in data/faculty_urls.json.
@@ -324,6 +403,8 @@ def start_run():
     considerations = data.get("considerations") or ""
     _run_queue = queue.Queue()
 
+    run_state = _start_run_state("search", discipline=discipline, schools=schools)
+
     def run():
         global _pipeline_running
         try:
@@ -332,12 +413,32 @@ def start_run():
                 {"schools": schools, "discipline": discipline, "considerations": considerations,
                  "api_key": api_key},
                 _run_queue,
+                run_state,
             )
         finally:
             _pipeline_running = False
 
     threading.Thread(target=run, daemon=True).start()
     return jsonify({"status": "started"})
+
+
+@app.route("/api/last-run")
+def last_run():
+    """The server's own copy of the most recent run — closing the tab loses nothing."""
+    kind = request.args.get("kind", "search")
+    with _last_runs_lock:
+        state = _last_runs.get(kind)
+        if not state:
+            return jsonify({"status": "none"})
+        return jsonify({
+            "status":     state.get("status"),
+            "discipline": state.get("discipline"),
+            "schools":    state.get("schools"),
+            "started_at": state.get("started_at"),
+            "progress":   state.get("progress"),
+            "error":      state.get("error"),
+            "records":    list(state.get("records", {}).values()),
+        })
 
 
 @app.route("/api/stream")
@@ -406,6 +507,9 @@ def start_names_run():
 
     _names_run_queue = queue.Queue()
 
+    run_state = _start_run_state("names", discipline=discipline,
+                                 schools=sorted({r["school"] for r in records}))
+
     def run():
         global _names_pipeline_running
         try:
@@ -414,6 +518,7 @@ def start_names_run():
                 {"records": records, "discipline": discipline, "considerations": considerations,
                  "api_key": api_key},
                 _names_run_queue,
+                run_state,
             )
         finally:
             _names_pipeline_running = False

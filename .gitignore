@@ -11,5 +11,4 @@ tests/fixtures/hindex/
 ARCHITECTURE_AUDIT.md
 
 .DS_Store
-faculty_summaries.txt
-tests/snapshots/
+data/last_run_*.json
