@@ -358,13 +358,29 @@ def record_run(db_path: str, discipline: str, schools: list,
 # ALERT CHECKS
 # ─────────────────────────────────────────────
 
-def run_alert_checks(faculty_found: int, discipline: str) -> list[str]:
-    """Check alert conditions. Logs warnings and returns list of triggered alerts."""
+def run_alert_checks(faculty_found: int, discipline: str, discovery: list | None = None) -> list[str]:
+    """Check alert conditions. Logs warnings and returns list of triggered alerts.
+
+    discovery — optional per-school discovery summaries (faculty_merge.discovery_summary).
+    The run-wide total hides a school that came back empty or whose directory page
+    could not be read, so each of those gets its own alert.
+    """
     m = get_metrics()
     alerts = []
 
     if faculty_found < ALERT_THRESHOLDS["min_faculty_expected"]:
         alerts.append(f"LOW_DISCOVERY: only {faculty_found} faculty found for {discipline}")
+
+    for entry in discovery or []:
+        school = entry.get("school", "?")
+        if not entry.get("found"):
+            alerts.append(f"ZERO_FACULTY: no {discipline} faculty found for {school}")
+        for source in entry.get("sources") or []:
+            if source.get("status") in ("blocked", "error"):
+                alerts.append(
+                    f"DIRECTORY_UNREAD: {school} — {source.get('url') or source.get('type')} "
+                    f"({source.get('detail') or source.get('status')})"
+                )
 
     total_api    = sum(m["api_calls"].values())
     total_errors = sum(m["api_errors"].values())

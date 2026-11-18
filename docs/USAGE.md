@@ -177,6 +177,9 @@ pytest
 | `OPENAI_API_KEY not set` | Export it or add to `.env` |
 | All h-index values from OpenAlex | Scopus key missing or off-network — set `SCOPUS_API_KEY` / `SCOPUS_INSTTOKEN`, or accept the OpenAlex fallback |
 | `LOW_DISCOVERY` alert / very few faculty | Directory page structure changed or the wrong URL was cached — check/clear the entry in `data/faculty_urls.json` |
+| "N institutions may be incomplete" banner, `ZERO_FACULTY` / `DIRECTORY_UNREAD` alerts | That school's directory page was blocked, failed to load, or lists no one. Open the URL named in the message: if it is an overview or fellowship page, point `data/faculty_urls.json` at the page that actually lists faculty; if the site blocks automated browsers, add the people through the Name Lookup tab |
+| Export has fewer rows than the run found | The CSV is the filtered view — the button shows "(N of M)" and the file name ends in `_filtered`. Clear the filters to export everything |
+| People with "Attending Physician" or no title appear under a rank filter | Their title states no academic rank, so the filter cannot place them and keeps them (counted as "with no rank listed") |
 | Many `institution_unconfirmed` NIH flags | Institution aliases missing from the xlsx / lookup tables — add them |
 | Playwright errors on first run | Run `playwright install chromium` |
 | Web UI asks for a password | `SITE_PASSWORD` is set in the environment |

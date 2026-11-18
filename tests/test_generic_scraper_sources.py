@@ -138,3 +138,56 @@ def test_records_carry_school_and_discovery_source(scraper, monkeypatch):
 def test_parse_faculty_array_is_tolerant(raw, expected_names):
     items = gfs._parse_faculty_array(raw)
     assert [i["full_name"] for i in items] == expected_names
+
+
+# ── blocked / empty directory pages ───────────────────────────────────────────
+
+_ROSTER_TEXT = "Jordan Vega, MD Professor of Pediatrics View profile " * 120  # ~6,000 chars
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize("status,text,blocked", [
+    (200, _ROSTER_TEXT, False),
+    (None, _ROSTER_TEXT, False),                                   # status unknown (timeout) — judge by content
+    (403, "403 Forbidden Error 54113 Varnish cache server", True),
+    (200, "Just a moment...", True),                               # Cloudflare challenge served with 200
+    (None, "Attention Required! | Cloudflare Sorry, you have been blocked", True),
+    (404, "Page not found. Try searching instead. " * 100, True),  # a long 404 page is still not a roster
+    (500, "Something went wrong", True),
+    (403, _ROSTER_TEXT, False),                                    # challenge cleared, real page rendered
+    (200, _ROSTER_TEXT + " Visitors without a badge are denied access denied entry.", False),
+])
+def test_block_reason_separates_block_pages_from_rosters(status, text, blocked):
+    assert bool(gfs._block_reason(status, text)) is blocked
+
+
+@pytest.mark.unit
+def test_blocked_directory_is_reported_and_web_search_still_contributes(scraper, monkeypatch):
+    """A block page used to parse to "zero faculty" and vanish; now the school is flagged."""
+    _stub_sources(monkeypatch, html_error=gfs.DirectoryBlocked("HTTP 403"), web_names=["Casey Morgan"])
+    records = scraper.get_faculty(_SCHOOL, _DISCIPLINE)
+
+    assert [r["full_name"] for r in records] == ["Casey Morgan"]
+    report = scraper.last_report
+    assert report["school"] == _SCHOOL
+    assert report["web_search_found"] == 1
+    assert report["sources"] == [{
+        "type": SOURCE_UNIVERSITY, "url": "https://med.stanford.edu/peds",
+        "status": "blocked", "found": 0, "detail": "HTTP 403",
+    }]
+
+
+@pytest.mark.unit
+def test_directory_page_listing_nobody_is_reported_as_empty(scraper, monkeypatch):
+    """An overview page with no names loads fine — the report must still say it gave nothing."""
+    _stub_sources(monkeypatch, html_names=[], web_names=["Casey Morgan"])
+    scraper.get_faculty(_SCHOOL, _DISCIPLINE)
+    assert [s["status"] for s in scraper.last_report["sources"]] == ["empty"]
+
+
+@pytest.mark.unit
+def test_readable_directory_is_reported_ok_with_its_count(scraper, monkeypatch):
+    _stub_sources(monkeypatch, html_names=["Jordan Vega", "Riley Chen"], web_names=[])
+    scraper.get_faculty(_SCHOOL, _DISCIPLINE)
+    source = scraper.last_report["sources"][0]
+    assert (source["status"], source["found"]) == ("ok", 2)

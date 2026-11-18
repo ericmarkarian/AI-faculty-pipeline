@@ -75,10 +75,58 @@ def _load_urls(urls_path: str) -> dict:
     return json.loads(p.read_text())
 
 
+class DirectoryBlocked(RuntimeError):
+    """The directory URL answered with an error or bot-challenge page, not a roster.
+
+    Raised instead of returning the page, because a block page parses cleanly to
+    "zero faculty" and the school would otherwise look empty rather than unread.
+    """
+
+
+# Text that identifies a bot-challenge / access-denied page. Only trusted on short
+# pages (see _BLOCK_PAGE_MAX_CHARS) — a real roster can mention any of these in passing.
+_BLOCK_PAGE_MARKERS = (
+    "just a moment...",                    # Cloudflare JS challenge
+    "attention required! | cloudflare",
+    "sorry, you have been blocked",
+    "verify you are human",
+    "enable javascript and cookies to continue",
+    "access denied",
+    "403 forbidden",
+    "pardon our interruption",
+    "request unsuccessful",
+)
+_BLOCK_PAGE_MAX_CHARS = 3000   # challenge pages are a few hundred chars; rosters are far longer
+# Statuses a bot challenge answers with before the browser clears it and the real page loads.
+_CHALLENGE_STATUSES = frozenset({403, 429, 503})
+
+
+def _block_reason(status: int | None, text: str) -> str | None:
+    """Why this fetch must not be read as a roster, or None when it looks like real content.
+
+    status — HTTP status of the main navigation (None when unknown).
+    text   — the page's plain text after rendering.
+    """
+    short = len(text) <= _BLOCK_PAGE_MAX_CHARS
+    if short:
+        lowered = text.lower()
+        marker = next((m for m in _BLOCK_PAGE_MARKERS if m in lowered), None)
+        if marker:
+            return f"bot-block page ({marker!r})"
+    if status is not None and status >= 400:
+        if status in _CHALLENGE_STATUSES and not short:
+            return None  # challenge cleared in the browser — the real page rendered after it
+        return f"HTTP {status}"
+    return None
+
+
 def _fetch_html_playwright(url: str) -> str:
     """
     Launch a headless Chromium browser, navigate to the URL, wait for the
     network to go idle (JS finishes loading), and return the full page HTML.
+
+    Raises DirectoryBlocked when the site answers with an error status or a
+    bot-challenge page.
     """
     from playwright.sync_api import sync_playwright, TimeoutError as PlaywrightTimeoutError
     # Share the global Playwright semaphore + container flags with Agent 2 so the total
@@ -93,14 +141,20 @@ def _fetch_html_playwright(url: str) -> str:
                     "Chrome/122.0.0.0 Safari/537.36"
                 )
             )
+            status: int | None = None
             try:
-                page.goto(url, wait_until="networkidle", timeout=30000)
+                response = page.goto(url, wait_until="networkidle", timeout=30000)
+                status = response.status if response is not None else None
                 html = page.content()
             except PlaywrightTimeoutError:
                 # networkidle timed out — grab whatever loaded
                 html = page.content()
             finally:
                 browser.close()
+
+    reason = _block_reason(status, _html_to_text(html))
+    if reason:
+        raise DirectoryBlocked(reason)
     return html
 
 
@@ -301,6 +355,7 @@ class GenericFacultyScraper(ScraperProvider):
         self._extraction_model = extraction_model
         self._use_web_search = _WEB_SEARCH_DEFAULT if use_web_search is None else use_web_search
         self._client = observe.instrument_client(OpenAI(api_key=os.environ.get("OPENAI_API_KEY")))
+        self.last_report: dict | None = None  # per-source outcome of the latest get_faculty()
 
     def _discover_urls(self, school: str, discipline: str) -> list[tuple[str, str]]:
         """Ask GPT-4o with web search to find university + hospital faculty URLs, then cache."""
@@ -405,6 +460,11 @@ class GenericFacultyScraper(ScraperProvider):
     def get_faculty(self, school: str, discipline: str) -> list[FacultyRecord]:
         sources = self._get_url_sources(school, discipline)
         results: list[tuple[str, list[dict]]] = []
+        # What each source did for this school — read by the pipeline after the call
+        # (see faculty_merge.discovery_summary) so a blocked or empty directory page is
+        # reported instead of passing as "this school has no faculty".
+        report: dict = {"school": school, "sources": [], "web_search_found": None}
+        self.last_report = report
 
         # Web search runs in parallel with the browser fetches — it is pure network
         # latency (~20-40s) and would otherwise be added to every school's runtime.
@@ -413,17 +473,28 @@ class GenericFacultyScraper(ScraperProvider):
 
             for url, source_type in sources:
                 time.sleep(self._delay)
+                outcome = {"type": source_type, "url": url, "status": "ok", "found": 0, "detail": ""}
                 try:
                     extracted = self._scrape_directory(url, source_type, school, discipline)
                     print(f"    [GenericScraper] {source_type}: {len(extracted)} faculty extracted")
+                    outcome["found"] = len(extracted)
+                    if not extracted:
+                        outcome["status"] = "empty"
                     results.append((source_type, extracted))
+                except DirectoryBlocked as e:
+                    outcome.update(status="blocked", detail=str(e))
+                    print(f"    [GenericScraper] Directory page blocked ({source_type}, {e}): {url}")
                 except Exception as e:
                     # A dead hospital page (or even a dead university page) is survivable:
                     # the other sources still contribute.
+                    outcome.update(status="error", detail=str(e))
                     print(f"    [GenericScraper] Playwright fetch failed ({source_type}, {e})")
+                report["sources"].append(outcome)
 
             if web_future is not None:
-                results.append((SOURCE_WEB_SEARCH, web_future.result()))
+                web_items = web_future.result()
+                report["web_search_found"] = len(web_items)
+                results.append((SOURCE_WEB_SEARCH, web_items))
 
         if not results:
             print(f"    [GenericScraper] No sources produced results for {school}")

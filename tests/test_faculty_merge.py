@@ -13,6 +13,8 @@ from providers.faculty_merge import (
     SOURCE_UNKNOWN,
     SOURCE_WEB_SEARCH,
     dedupe_by_name,
+    discovery_summary,
+    flag_shared_profile_urls,
     merge_faculty,
     name_keys,
     normalize_name,
@@ -353,3 +355,85 @@ def test_every_record_carries_the_school():
         (SOURCE_WEB_SEARCH, [{"full_name": "Casey Morgan"}]),
     ], _SCHOOL)
     assert all(r["school"] == _SCHOOL for r in merged)
+
+
+# ── degree suffixes that used to defeat dedupe ────────────────────────────────
+
+@pytest.mark.unit
+@pytest.mark.parametrize("variant", [
+    "Jordan Vega, MD, MHSc",
+    "Jordan Vega, MD, MSCE",
+    "Jordan Vega, MD, MS, FNLA",
+    "Jordan Vega, MBBCh, FRCPC",
+])
+def test_less_common_degrees_do_not_split_one_person_in_two(variant):
+    records = [
+        {"full_name": "Jordan Vega", "school": _SCHOOL},
+        {"full_name": variant, "school": _SCHOOL},
+    ]
+    assert len(dedupe_by_name(records)) == 1
+
+
+# ── flag_shared_profile_urls ──────────────────────────────────────────────────
+
+@pytest.mark.unit
+def test_roster_page_used_as_everyones_profile_is_flagged():
+    """'…/team#' for two people is the roster, not either person's page."""
+    records = [
+        {"full_name": "Jordan Vega", "profile_url": "https://h.example/endo/team#"},
+        {"full_name": "Casey Morgan", "profile_url": "https://h.example/endo/team#"},
+        {"full_name": "Riley Chen", "profile_url": "https://h.example/doctors/riley-chen"},
+        {"full_name": "Sam Okafor", "profile_url": None},
+    ]
+    flagged = flag_shared_profile_urls(records)
+    assert [bool(r.get("profile_url_shared")) for r in flagged] == [True, True, False, False]
+
+
+@pytest.mark.unit
+def test_directory_page_as_profile_is_flagged_even_for_one_person():
+    records = [{"full_name": "Jordan Vega", "profile_url": "https://u.example/faculty.html#vega"}]
+    flagged = flag_shared_profile_urls(records, directory_urls=["https://u.example/faculty.html"])
+    assert flagged[0]["profile_url_shared"] is True
+
+
+@pytest.mark.unit
+def test_flag_shared_profile_urls_does_not_mutate_its_input():
+    records = [
+        {"full_name": "Jordan Vega", "profile_url": "https://h.example/team"},
+        {"full_name": "Casey Morgan", "profile_url": "https://h.example/team/"},
+    ]
+    flag_shared_profile_urls(records)
+    assert all("profile_url_shared" not in r for r in records)
+
+
+# ── discovery_summary ─────────────────────────────────────────────────────────
+
+@pytest.mark.unit
+def test_discovery_summary_is_quiet_when_every_source_worked():
+    records = [{"full_name": "Jordan Vega", "discovery_source": "university"}]
+    report = {"sources": [{"type": SOURCE_UNIVERSITY, "url": "https://u.example/faculty",
+                           "status": "ok", "found": 1, "detail": ""}]}
+    summary = discovery_summary(_SCHOOL, records, report)
+    assert summary["issues"] == []
+    assert (summary["school"], summary["found"]) == (_SCHOOL, 1)
+    assert summary["by_source"] == {"university": 1}
+
+
+@pytest.mark.unit
+def test_discovery_summary_flags_a_school_with_no_faculty():
+    assert discovery_summary(_SCHOOL, [])["issues"] == ["No faculty found"]
+
+
+@pytest.mark.unit
+def test_discovery_summary_names_blocked_failed_and_empty_pages():
+    records = [{"full_name": "Casey Morgan", "discovery_source": "web_search"}]
+    report = {"sources": [
+        {"type": SOURCE_HOSPITAL, "url": "https://h.example/team", "status": "blocked", "found": 0, "detail": "HTTP 403"},
+        {"type": SOURCE_UNIVERSITY, "url": "https://u.example/overview", "status": "empty", "found": 0, "detail": ""},
+        {"type": SOURCE_UNKNOWN, "url": "https://x.example/dir", "status": "error", "found": 0, "detail": "timeout"},
+    ]}
+    assert discovery_summary(_SCHOOL, records, report)["issues"] == [
+        "Blocked: hospital page https://h.example/team (HTTP 403)",
+        "No faculty listed on: university page https://u.example/overview",
+        "Could not load: directory page https://x.example/dir (timeout)",
+    ]

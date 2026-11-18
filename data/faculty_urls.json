@@ -1,8 +1,10 @@
 {
   "Pediatric Endocrinology": {
     "Harvard Medical School": {
+      "university_url": "https://research.childrenshospital.org/research-units/endocrinology-research/meet-our-team",
+      "hospital_url": "https://www.childrenshospital.org/services/endocrinology/meet-our-team",
       "url": "https://research.childrenshospital.org/research-units/endocrinology-research/meet-our-team",
-      "notes": "Boston Children's Hospital (Harvard-affiliated) endocrinology research team page. Faculty hold Harvard Medical School appointments.",
+      "notes": "Boston Children's Hospital (Harvard-affiliated). The research-unit page lists only ~14 lab leaders; the clinical Division of Endocrinology team page lists the full attending roster (~50) with Harvard Medical School ranks, so both are read.",
       "verified": true,
       "needs_review": false
     },
@@ -67,14 +69,18 @@
       "needs_review": false
     },
     "University of Cincinnati College of Medicine / Cincinnati Children's": {
-      "url": "https://www.cincinnatichildrens.org/education/clinical/fellowship/endocrinology/team",
-      "notes": "This page lists faculty members in the Pediatric Endocrinology division at Cincinnati Children's Hospital Medical Center, including their names and titles.",
+      "university_url": "https://www.cincinnatichildrens.org/research/divisions/e/endocrinology/team",
+      "hospital_url": "https://www.cincinnatichildrens.org/service/e/endocrinology/team",
+      "url": "https://www.cincinnatichildrens.org/research/divisions/e/endocrinology/team",
+      "notes": "The research-division team page lists faculty with UC Department of Pediatrics ranks and emails; the clinical service team page lists every provider by name only. The fellowship 'Leadership and Fellows' page used previously shows names without ranks, mixed with nurses, dietitians and fellows.",
       "verified": true,
       "needs_review": false
     },
     "Baylor College of Medicine / Texas Children's Hospital": {
-      "url": "https://www.bcm.edu/departments/pediatrics/divisions-and-centers/diabetes-and-endocrinology",
-      "notes": "This page provides an overview of the Division of Pediatric Diabetes and Endocrinology at Baylor College of Medicine, including information about their faculty and programs.",
+      "university_url": "https://www.bcm.edu/departments/pediatrics/divisions-and-centers/diabetes-and-endocrinology/faculty-and-staff/faculty",
+      "hospital_url": null,
+      "url": "https://www.bcm.edu/departments/pediatrics/divisions-and-centers/diabetes-and-endocrinology/faculty-and-staff/faculty",
+      "notes": "Division of Pediatric Diabetes and Endocrinology faculty list (~40 people with ranks and profile links). The division overview page one level up, used previously, names no one.",
       "verified": true,
       "needs_review": false
     },
