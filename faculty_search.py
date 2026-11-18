@@ -30,7 +30,13 @@ load_dotenv()
 
 import observe
 from providers.live import LiveNihProvider, LiveRolesProvider, LiveHIndexProvider, merge_specialty_considerations
-from providers.faculty_merge import SOURCE_WEB_SEARCH, dedupe_by_name, source_breakdown
+from providers.faculty_merge import (
+    SOURCE_WEB_SEARCH,
+    dedupe_by_name,
+    discovery_summary,
+    flag_shared_profile_urls,
+    source_breakdown,
+)
 from providers.generic_faculty_scraper import GenericFacultyScraper
 from providers.profile_scrapers import StanfordProfileScraper, TavilyProfileScraper, PlaywrightProfileScraper
 from providers.profile_scrapers.base import ProfileScraper
@@ -240,6 +246,10 @@ def get_scopus_hindex(full_name: str, school: str) -> int | None:
 
 _scraper_provider = GenericFacultyScraper()
 
+# school -> discovery_summary() of the latest agent1_scrape for it. Kept beside the
+# return value (rather than in it) so agent1_scrape still returns a plain roster.
+_discovery_reports: dict[str, dict] = {}
+
 
 def agent1_scrape(school_name: str, scraper=None, discipline: str = DISCIPLINE) -> list[dict]:
     t0 = time.time()
@@ -248,10 +258,14 @@ def agent1_scrape(school_name: str, scraper=None, discipline: str = DISCIPLINE) 
 
     provider = scraper or _scraper_provider
     all_faculty: list[dict] = []
+    source_report: dict | None = None  # what each directory page did, when the provider tracks it
 
     try:
         records = provider.get_faculty(school_name, discipline)
         all_faculty.extend(records)
+        provider_report = getattr(provider, "last_report", None)
+        if isinstance(provider_report, dict) and provider_report.get("school") == school_name:
+            source_report = provider_report
         print(f"  -> Found {len(records)} faculty (directory scrape + web search)")
     except ValueError:
         # No browse URL configured for this school — fall back to LLM web search
@@ -287,6 +301,7 @@ If a field is not available, use null.
     except Exception as e:
         observe.log("agent1_error", level="error", school=school_name, error=str(e))
         print(f"  [!] Scraper failed for {school_name}: {e}")
+        source_report = {"sources": [{"type": "scraper", "url": "", "status": "error", "detail": str(e)}]}
 
     # Deduplicate
     _EXCLUDE_TITLE_KEYWORDS = ("emeritus", "emerita", "by courtesy", "courtesy")
@@ -302,10 +317,19 @@ If a field is not available, use null.
             continue
         kept.append(f)
     deduped = dedupe_by_name(kept)
+    # A roster page handed out as everyone's "profile" must not be read as one person's bio.
+    directory_urls = [s.get("url") for s in (source_report or {}).get("sources", [])]
+    deduped = flag_shared_profile_urls(deduped, directory_urls)
+
+    summary = discovery_summary(school_name, deduped, source_report)
+    _discovery_reports[school_name] = summary
+    for issue in summary["issues"]:
+        print(f"  [Agent 1] ⚠ {school_name}: {issue}")
 
     by_source = source_breakdown(deduped)
     observe.log("agent1_complete", school=school_name, faculty_found=len(deduped),
-                by_source=by_source, latency_ms=int((time.time() - t0) * 1000))
+                by_source=by_source, issues=summary["issues"],
+                latency_ms=int((time.time() - t0) * 1000))
     print(f"  -> Total at {school_name}: {len(deduped)} "
           f"({', '.join(f'{s}: {n}' for s, n in sorted(by_source.items()))})")
     return deduped
@@ -386,7 +410,9 @@ def agent2_enrich(
     profile_email: str | None = None
     profile_education: list = []
     profile_title: str | None = None
-    if profile_url:
+    # A shared roster page is not this person's profile: its first title and its roles
+    # belong to whoever is listed first. Skip it and let the name-based search run.
+    if profile_url and not faculty.get("profile_url_shared"):
         scraper = _get_profile_scraper(profile_url)
         if scraper:
             try:
@@ -846,7 +872,13 @@ def run_pipeline_from_records(records, on_enriched=None, on_qc_complete=None, ro
     return final
 
 
-def run_pipeline(schools=None, discipline=None, on_enriched=None, on_qc_complete=None, considerations: str = ""):
+def run_pipeline(schools=None, discipline=None, on_enriched=None, on_qc_complete=None, considerations: str = "",
+                 on_discovery=None):
+    """Run discovery, enrichment and QC for a list of schools.
+
+    on_discovery — called once after Agent 1 with one discovery_summary() dict per
+    school, so the caller can show which schools came back empty or unread.
+    """
     t_start = time.time()
     observe.start()
     _schools = schools or SCHOOLS
@@ -863,13 +895,25 @@ def run_pipeline(schools=None, discipline=None, on_enriched=None, on_qc_complete
     _roles_provider = LiveRolesProvider(client, discipline=_discipline)
 
     all_faculty = []
+    discovery: list[dict] = []   # one discovery_summary() per school, in run order
+    _discovery_reports.clear()
 
     observe.log_mem("pipeline_start", schools=len(_schools))
     for i, school in enumerate(_schools, 1):
         faculty = agent1_scrape(school, discipline=_discipline)
         all_faculty.extend(faculty)
+        discovery.append(_discovery_reports.get(school) or discovery_summary(school, faculty))
         observe.log_mem("after_school", school_num=i, of=len(_schools), faculty_so_far=len(all_faculty))
         time.sleep(1)
+
+    flagged = [d for d in discovery if d["issues"]]
+    if flagged:
+        print(f"\n[Agent 1] {len(flagged)} of {len(discovery)} school(s) need a look — results for them are likely incomplete:")
+        for d in flagged:
+            print(f"    ⚠ {d['school']} ({d['found']} found): {'; '.join(d['issues'])}")
+    observe.log("discovery_summary", discipline=_discipline, schools=discovery)
+    if on_discovery:
+        on_discovery(discovery)
 
     # Global deduplicate (per school — joint appointments stay as separate rows)
     deduped = dedupe_by_name(all_faculty)
@@ -940,7 +984,7 @@ def run_pipeline(schools=None, discipline=None, on_enriched=None, on_qc_complete
     runtime = time.time() - t_start
 
     # Alert checks
-    alerts = observe.run_alert_checks(len(final), _discipline)
+    alerts = observe.run_alert_checks(len(final), _discipline, discovery=discovery)
     if alerts:
         print("\n[!] ALERTS:")
         for a in alerts:

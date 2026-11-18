@@ -49,7 +49,8 @@ _NAME_NOISE_TOKENS = frozenset({
     "dr", "prof", "professor",
     "md", "mds", "do", "phd", "dphil", "scd", "edd", "mbbs", "mbchb", "dsc",
     "ms", "msc", "mha", "mhs", "mph", "mba", "med", "msn", "rn", "np", "pa", "rd",
-    "faap", "facs", "facp", "face", "facc", "faha", "fccp", "dfaacap",
+    "mhsc", "msce", "msci", "mscr", "mmsc", "mbbch", "pharmd", "psyd",
+    "faap", "facs", "facp", "face", "facc", "faha", "fccp", "dfaacap", "frcpc", "fnla",
 })
 
 _COURTESY_MARKERS = ("by courtesy", "courtesy appointment")
@@ -243,3 +244,74 @@ def source_breakdown(records: Sequence[dict]) -> dict[str, int]:
         key = record.get("discovery_source") or "unknown"
         counts[key] = counts.get(key, 0) + 1
     return counts
+
+
+def _page_key(url: str | None) -> str:
+    """A URL reduced to the page it loads: no #fragment, no trailing slash, lowercased."""
+    if not url:
+        return ""
+    return url.split("#", 1)[0].rstrip("/").lower()
+
+
+def flag_shared_profile_urls(
+    records: Sequence[dict],
+    directory_urls: Iterable[str] = (),
+) -> list[dict]:
+    """Mark records whose profile_url is not a page about that one person.
+
+    A directory with no per-person pages gives every faculty member the same link —
+    the roster itself, or an in-page anchor on it ("…/team#"). Reading that page as
+    one person's profile assigns the first title and roles on it to everybody, so
+    such records get `profile_url_shared: True` and enrichment leaves the page alone.
+
+    A URL counts as shared when two or more records point at it or when it is one
+    of the directory pages the roster was read from.
+    """
+    directory_keys = {_page_key(u) for u in directory_urls if u}
+    counts: dict[str, int] = {}
+    for record in records:
+        key = _page_key(record.get("profile_url"))
+        if key:
+            counts[key] = counts.get(key, 0) + 1
+
+    flagged: list[dict] = []
+    for record in records:
+        key = _page_key(record.get("profile_url"))
+        shared = bool(key) and (counts[key] > 1 or key in directory_keys)
+        flagged.append({**record, "profile_url_shared": True} if shared else record)
+    return flagged
+
+
+def discovery_summary(school: str, records: Sequence[dict], source_report: dict | None = None) -> dict:
+    """Describe how discovery went for one school, for the run log and the UI.
+
+    source_report — GenericFacultyScraper.last_report for this school, or None when
+    another provider (or the plain web-search fallback) produced the roster.
+
+    `issues` lists what a reader of the results needs to know: the school came back
+    empty, or a directory page was blocked / failed / listed nobody, in which case
+    the roster rests on the remaining sources and is probably incomplete.
+    """
+    sources = list((source_report or {}).get("sources") or [])
+    issues: list[str] = []
+    if not records:
+        issues.append("No faculty found")
+    for source in sources:
+        status = source.get("status")
+        kind = source.get("type")
+        page = f"{kind} page" if kind in (SOURCE_UNIVERSITY, SOURCE_HOSPITAL) else "directory page"
+        where = f"{page} {source.get('url') or ''}".strip()
+        detail = f" ({source['detail']})" if source.get("detail") else ""
+        if status == "blocked":
+            issues.append(f"Blocked: {where}{detail}")
+        elif status == "error":
+            issues.append(f"Could not load: {where}{detail}")
+        elif status == "empty":
+            issues.append(f"No faculty listed on: {where}")
+    return {
+        "school": school,
+        "found": len(records),
+        "by_source": source_breakdown(records),
+        "sources": sources,
+        "issues": issues,
+    }

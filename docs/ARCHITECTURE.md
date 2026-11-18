@@ -42,7 +42,10 @@ independent sources run on **every** school and are unioned: a **directory scrap
    for up to two directory URLs: a **university** page (preferred — richer academic bios) and
    a **hospital** specialist page (secondary). The result is cached back to the JSON file.
 2. **Fetch** — headless Chromium (Playwright) loads the page with `wait_until="networkidle"`
-   so JS-rendered directories fully populate.
+   so JS-rendered directories fully populate. An error status or a bot-challenge page
+   (Cloudflare "Just a moment…", "Access Denied", a 403) raises `DirectoryBlocked` instead
+   of being parsed: a block page reads as "zero faculty" and would otherwise make the
+   school look empty rather than unread.
 3. **Compress** — `_html_to_text()` strips `script/style/nav/footer`, but **inlines hrefs**
    as `text [https://url]` so the LLM can still capture each person's individual profile
    link. This collapses a directory from ~100 raw-HTML chunks to 1–3 text chunks.
@@ -62,6 +65,18 @@ independent sources run on **every** school and are unioned: a **directory scrap
    `discovery_source` (e.g. `university+web_search`) naming every source that found the person.
 
 Agent 1 then dedups with the same name matching and excludes emeritus/emerita/courtesy titles.
+
+**Discovery report.** Each school gets a `discovery_summary()` — faculty found, the count
+per source, and an `issues` list ("No faculty found", "Blocked: …", "Could not load: …",
+"No faculty listed on: …"). It is written to the run log, raises `ZERO_FACULTY` /
+`DIRECTORY_UNREAD` alerts, and is streamed to the UI, which lists the affected institutions
+above the results. A school with issues still gets whatever web search found, so treat its
+roster as incomplete.
+
+**Roster pages are not profiles.** When a directory has no per-person pages, every record's
+`profile_url` is the roster itself (or an anchor on it). Those records are marked
+`profile_url_shared` and Agent 2 skips the profile scrape for them — reading the roster as
+a bio gave everyone on it the first person's title and roles.
 
 > **Why both sources:** neither is a superset of the other. Web search used to be a fallback
 > that fired only when the browser fetch failed, so a batch school search returned fewer

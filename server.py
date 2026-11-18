@@ -45,6 +45,11 @@ def _pipeline_child(kind: str, payload: dict, mpq) -> None:
     def on_qc_complete(rec):
         mpq.put({"type": "qc_update", "data": rec})
 
+    def on_discovery(report):
+        # Per-school discovery outcome — lets the UI say which schools came back
+        # empty or had a directory page that could not be read.
+        mpq.put({"type": "discovery", "data": report})
+
     try:
         # A per-request key (multi-user deployments) must land in the environment
         # BEFORE faculty_search builds its OpenAI client at import time. The child
@@ -66,6 +71,7 @@ def _pipeline_child(kind: str, payload: dict, mpq) -> None:
                 schools=payload["schools"], discipline=payload["discipline"],
                 on_enriched=on_enriched, on_qc_complete=on_qc_complete,
                 considerations=payload["considerations"],
+                on_discovery=on_discovery,
             )
     except Exception as exc:  # noqa: BLE001 — surface any failure to the UI
         mpq.put({"type": "error", "message": str(exc)})
@@ -111,6 +117,8 @@ def _run_state_apply(state: dict, msg: dict) -> None:
             # Real runs re-send the full record here; merge so a badge-only
             # update never erases fields we already have.
             state["records"][name] = {**state["records"].get(name, {}), **data}
+        elif mtype == "discovery":
+            state["discovery"] = msg.get("data") or []
         elif mtype == "error":
             state["error"] = msg.get("message")
 
@@ -262,6 +270,20 @@ _SCHOOL_NAME_MAP: dict[str, str] = {
 def _normalize_schools(schools: list[str]) -> list[str]:
     return [_SCHOOL_NAME_MAP.get(s, s) for s in schools]
 
+
+def _school_labels(selected: list[str]) -> dict[str, str]:
+    """Pipeline school name -> the name the user picked for it in the UI.
+
+    Records carry the pipeline name ("Harvard Medical School"); the user picked
+    "Boston Children's Hospital". The UI and the CSV export show the picked name so
+    a search for the hospital finds its rows. First pick wins when two selections
+    resolve to the same pipeline school.
+    """
+    labels: dict[str, str] = {}
+    for name in selected:
+        labels.setdefault(_SCHOOL_NAME_MAP.get(name, name), name)
+    return labels
+
 app = Flask(__name__)
 
 _run_lock   = threading.Lock()
@@ -398,12 +420,15 @@ def start_run():
             return jsonify({"error": "Pipeline already running"}), 409
         _pipeline_running = True
 
-    schools        = _normalize_schools(data.get("schools") or ["Stanford"])
+    selected       = data.get("schools") or ["Stanford"]
+    schools        = _normalize_schools(selected)
+    school_labels  = _school_labels(selected)
     discipline     = data.get("discipline") or "Pediatric Endocrinology"
     considerations = data.get("considerations") or ""
     _run_queue = queue.Queue()
 
-    run_state = _start_run_state("search", discipline=discipline, schools=schools)
+    run_state = _start_run_state("search", discipline=discipline, schools=schools,
+                                 school_labels=school_labels, discovery=[])
 
     def run():
         global _pipeline_running
@@ -419,7 +444,7 @@ def start_run():
             _pipeline_running = False
 
     threading.Thread(target=run, daemon=True).start()
-    return jsonify({"status": "started"})
+    return jsonify({"status": "started", "school_labels": school_labels})
 
 
 @app.route("/api/last-run")
@@ -434,6 +459,8 @@ def last_run():
             "status":     state.get("status"),
             "discipline": state.get("discipline"),
             "schools":    state.get("schools"),
+            "school_labels": state.get("school_labels") or {},
+            "discovery":  state.get("discovery") or [],
             "started_at": state.get("started_at"),
             "progress":   state.get("progress"),
             "error":      state.get("error"),

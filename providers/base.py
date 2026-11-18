@@ -52,6 +52,7 @@ class FacultyRecord(TypedDict, total=False):
     subspecialty: str | None
     email: str | None
     discovery_source: str   # "university", "web_search", "university+web_search", ...
+    profile_url_shared: bool  # profile_url is a roster page, not this person's own page
 
 
 class ScraperProvider(ABC):
