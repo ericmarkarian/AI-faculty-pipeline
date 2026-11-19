@@ -7,7 +7,10 @@ the run log, the alerts and the UI payload, plus two related guards: a shared ro
 page is never read as one person's profile, and results are labelled with the
 institution the user actually picked.
 """
+import json
 import os
+import queue
+import threading
 
 import pytest
 
@@ -185,3 +188,83 @@ def test_results_are_labelled_with_the_institution_the_user_picked():
         "Harvard Medical School": "Boston Children's Hospital",   # first pick wins
         "Yale School of Medicine": "Yale School of Medicine",
     }
+
+
+# ── server: a run from start to finish ────────────────────────────────────────
+
+class _ThreadProcess:
+    """Stand-in for the spawned pipeline process: runs the child entry point in a thread."""
+
+    def __init__(self, target, args, daemon=None):
+        self._thread = threading.Thread(target=target, args=args, daemon=True)
+
+    def start(self): self._thread.start()
+    def is_alive(self): return self._thread.is_alive()
+    def join(self, timeout=None): self._thread.join(timeout)
+    def terminate(self): pass
+
+
+class _ThreadContext:
+    Queue = staticmethod(queue.Queue)
+    Process = _ThreadProcess
+
+
+_REPORT = [{"school": "Harvard Medical School", "found": 1, "by_source": {"hospital": 1},
+            "sources": [{"type": "hospital", "url": "https://h.example/team", "status": "ok", "found": 1}],
+            "issues": []}]
+_PERSON = {"full_name": "Jordan Vega", "school": "Harvard Medical School", "title": "Professor"}
+
+
+@pytest.fixture
+def srv(monkeypatch, tmp_path):
+    import server
+    monkeypatch.setattr(server, "_MP_CTX", _ThreadContext)
+    monkeypatch.setattr(server, "_LAST_RUN_DIR", str(tmp_path))  # run snapshots stay out of data/
+    monkeypatch.setattr(server, "_last_runs", {"search": None, "names": None})
+    return server
+
+
+def test_run_state_takes_the_discovery_list_alongside_single_records(srv):
+    """Record messages carry a dict; the discovery message carries a list of schools."""
+    state = {"records": {}, "progress": None, "error": None, "discovery": []}
+    srv._run_state_apply(state, {"type": "discovery", "data": _REPORT})
+    srv._run_state_apply(state, {"type": "faculty", "data": _PERSON, "completed": 1, "total": 1})
+    srv._run_state_apply(state, {"type": "qc_update", "data": {**_PERSON, "qc": {}}})
+    srv._run_state_apply(state, {"type": "discovery", "data": None})  # malformed: no crash
+
+    assert list(state["records"]) == ["Jordan Vega"]
+    assert state["records"]["Jordan Vega"]["qc"] == {}
+    assert state["progress"] == {"done": 1, "total": 1}
+    assert state["discovery"] == [] and state["error"] is None
+
+
+def test_a_search_run_streams_discovery_and_records_through_to_done(srv, monkeypatch):
+    """Every message the pipeline emits must pass through the server without ending the run.
+
+    The discovery message once did end it: the run stopped after Agent 1 with
+    "failed to start pipeline: 'list' object has no attribute 'get'".
+    """
+    import faculty_search
+
+    def fake_run_pipeline(schools=None, discipline=None, on_enriched=None, on_qc_complete=None,
+                          considerations="", on_discovery=None):
+        on_discovery(_REPORT)
+        on_enriched(_PERSON, 1, 1)
+        on_qc_complete({**_PERSON, "qc": {}})
+
+    monkeypatch.setattr(faculty_search, "run_pipeline", fake_run_pipeline)
+    client = srv.app.test_client()
+
+    started = client.post("/api/run", json={"schools": ["Boston Children's Hospital"], "discipline": "Test"})
+    assert started.status_code == 200
+    assert started.get_json()["school_labels"] == {"Harvard Medical School": "Boston Children's Hospital"}
+
+    stream = client.get("/api/stream").get_data(as_text=True)
+    events = [json.loads(line[len("data:"):]) for line in stream.splitlines() if line.startswith("data:")]
+    assert [e["type"] for e in events] == ["discovery", "faculty", "qc_update", "done"]
+    assert events[0]["data"] == _REPORT
+
+    last = client.get("/api/last-run").get_json()
+    assert last["status"] == "completed" and last["error"] is None
+    assert last["discovery"] == _REPORT
+    assert [r["full_name"] for r in last["records"]] == ["Jordan Vega"]

@@ -437,3 +437,24 @@ def test_discovery_summary_names_blocked_failed_and_empty_pages():
         "No faculty listed on: university page https://u.example/overview",
         "Could not load: directory page https://x.example/dir (timeout)",
     ]
+
+
+@pytest.mark.unit
+def test_discovery_summary_keeps_a_long_browser_error_to_one_short_line():
+    """A browser launch failure arrives as a multi-line message with an ASCII box in it."""
+    noisy = "BrowserType.launch: Executable doesn't exist at /cache/chromium\n╔════╗\n║ run: playwright install ║\n╚════╝"
+    report = {"sources": [
+        {"type": SOURCE_HOSPITAL, "url": "https://h.example/team", "status": "error", "found": 0, "detail": noisy},
+        {"type": SOURCE_UNIVERSITY, "url": "https://u.example/f", "status": "error", "found": 0, "detail": "x" * 500},
+    ]}
+    summary = discovery_summary(_SCHOOL, [], report)
+
+    assert summary["issues"][1] == (
+        "Could not load: hospital page https://h.example/team "
+        "(BrowserType.launch: Executable doesn't exist at /cache/chromium)"
+    )
+    assert [s["detail"] for s in summary["sources"]] == [
+        "BrowserType.launch: Executable doesn't exist at /cache/chromium",
+        "x" * 159 + "…",
+    ]
+    assert report["sources"][0]["detail"] == noisy  # input left untouched
