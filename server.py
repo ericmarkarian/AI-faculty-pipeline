@@ -107,8 +107,10 @@ def _start_run_state(kind: str, **meta) -> dict:
 def _run_state_apply(state: dict, msg: dict) -> None:
     """Fold one pipeline message into the server-side copy of the run."""
     mtype = msg.get("type")
-    data = msg.get("data") or {}
-    name = data.get("full_name")
+    data = msg.get("data")
+    # "faculty" / "qc_update" carry one record (a dict); "discovery" carries a list,
+    # one summary per school — so never assume the payload is a dict.
+    name = data.get("full_name") if isinstance(data, dict) else None
     with _last_runs_lock:
         if mtype == "faculty" and name:
             state["records"][name] = data
@@ -118,7 +120,7 @@ def _run_state_apply(state: dict, msg: dict) -> None:
             # update never erases fields we already have.
             state["records"][name] = {**state["records"].get(name, {}), **data}
         elif mtype == "discovery":
-            state["discovery"] = msg.get("data") or []
+            state["discovery"] = data if isinstance(data, list) else []
         elif mtype == "error":
             state["error"] = msg.get("message")
 

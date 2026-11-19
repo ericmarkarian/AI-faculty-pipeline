@@ -282,6 +282,18 @@ def flag_shared_profile_urls(
     return flagged
 
 
+_DETAIL_MAX_CHARS = 160
+
+
+def _brief(detail: Any) -> str:
+    """First line of an error message, capped — browser errors run to many lines."""
+    lines = [line.strip() for line in str(detail or "").splitlines() if line.strip()]
+    first = lines[0] if lines else ""
+    if len(first) <= _DETAIL_MAX_CHARS:
+        return first
+    return first[: _DETAIL_MAX_CHARS - 1].rstrip() + "…"
+
+
 def discovery_summary(school: str, records: Sequence[dict], source_report: dict | None = None) -> dict:
     """Describe how discovery went for one school, for the run log and the UI.
 
@@ -292,7 +304,11 @@ def discovery_summary(school: str, records: Sequence[dict], source_report: dict 
     empty, or a directory page was blocked / failed / listed nobody, in which case
     the roster rests on the remaining sources and is probably incomplete.
     """
-    sources = list((source_report or {}).get("sources") or [])
+    # Details are shown to the user and written into alerts, so keep them to one line.
+    sources = [
+        {**source, "detail": _brief(source["detail"])} if source.get("detail") else source
+        for source in (source_report or {}).get("sources") or []
+    ]
     issues: list[str] = []
     if not records:
         issues.append("No faculty found")
