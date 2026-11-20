@@ -69,6 +69,7 @@ Or call `run_pipeline(schools=..., discipline=...)` / `run_pipeline_from_records
 | `NCBI_API_KEY` / `PUBMED_API_KEY` | Optional | Higher PubMed rate limit (email fallback lookups) |
 | `OPENALEX_API_KEY` | Optional | Higher-concurrency OpenAlex pool |
 | `AGENT1_WEB_SEARCH` | Optional | `0` runs Agent 1 from the scraped directory pages only. Default `1` — directory scrape **and** web search, unioned |
+| `AGENT1_FOLLOW_LINKS` | Optional | `0` stops Agent 1 from following a "meet our team" link when a saved directory page lists almost nobody. Default `1` |
 | `SITE_PASSWORD` | Optional | If set, the web UI requires this password (HTTP basic auth) |
 | `PORT` | Optional | Web server port (default `5050`) |
 
@@ -126,6 +127,9 @@ providers/
   generic_faculty_scraper.py      # Agent 1: directory scrape + web search, unioned
   playwright_scraper.py           # Deterministic HTML directory parsing
   faculty_merge.py                # Name normalization, cross-source merge, dedupe
+  roster_reading.py               # Reads a roster by its sections; leaves out trainees, staff, emeritus
+  roster_counts.py                # Remembers each page's head count so a shrunken read is flagged
+  pasted_roster.py                # Reads a roster page a person pasted in, for sites that block the scraper
   url_discovery.py                # Finds a school's faculty directory URL
   live.py                         # Live network implementations (NIH, Scopus, OpenAlex, roles)
   replay.py                       # Fixture-based replays for offline tests

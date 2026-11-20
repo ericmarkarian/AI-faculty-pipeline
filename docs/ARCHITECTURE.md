@@ -48,10 +48,41 @@ independent sources run on **every** school and are unioned: a **directory scrap
    school look empty rather than unread.
 3. **Compress** — `_html_to_text()` strips `script/style/nav/footer`, but **inlines hrefs**
    as `text [https://url]` so the LLM can still capture each person's individual profile
-   link. This collapses a directory from ~100 raw-HTML chunks to 1–3 text chunks.
-4. **Extract** — GPT-4o pulls `full_name`, `title`, `profile_url`, filtering to people whose
-   **primary** discipline matches (excludes "by courtesy", visiting faculty, residents,
-   fellows, staff). Pagination (`?page=N` / `/page/N`) is followed.
+   link, and keeps **headings** as their own lines (`## Fellows`). This collapses a directory
+   from ~100 raw-HTML chunks to 1–3 text chunks; a chunk that starts inside a section is
+   told which one.
+4. **Extract** — GPT-4o pulls `full_name`, `title`, `profile_url` and the `section` each
+   person is listed under, filtering to people whose **primary** discipline matches
+   (excludes "by courtesy", visiting faculty, residents, fellows, staff). Pagination
+   (`?page=N` / `/page/N`) is followed.
+   - **Screen** — the model does not reliably drop trainees, so
+     [`providers/roster_reading.py`](../providers/roster_reading.py) does it again without a
+     model: a person is left out when their own title says so ("Clinical Fellow", "Nurse
+     Practitioner", "Professor Emeritus") or when the page lists them under a heading for
+     fellows, non-physician staff or emeritus faculty. The rules lean toward keeping people:
+     a faculty rank, or an MD under a "Staff" heading, overrides the heading. Web-search
+     results have no page, so only their titles are judged. What was left out is counted in
+     the discovery report.
+   - **Follow a thin page** — a saved URL is sometimes a division overview or a fellowship
+     page. When a page lists fewer than five people (or under 60% of its recorded count),
+     up to two links on it that read like this division's roster ("Meet our team",
+     `…/faculty`) are read as well and the fullest is added. Set `AGENT1_FOLLOW_LINKS=0` to
+     turn this off.
+   - **Remember the count** — [`data/roster_counts.json`](../data/roster_counts.json) holds how
+     many people each saved page listed when it last read well (see
+     [`providers/roster_counts.py`](../providers/roster_counts.py)). A later read that falls
+     under 60% of that is reported as an issue, and a blocked page's issue says how many
+     people are missing. The count only goes up; edit the file by hand when a division
+     really shrinks.
+   - **Pasted rosters** — when a site refuses the pipeline's browser, the app lets a person
+     open the page themselves and paste it in. `POST /api/roster-paste` reads the paste
+     through the same text conversion, extraction and screening as a scraped page
+     ([`providers/pasted_roster.py`](../providers/pasted_roster.py)) and returns the people.
+     The browser keeps them (`localStorage`, never the server or the repo) and sends them
+     with each run as `pasted_rosters`. During a run a pasted roster stands in for its
+     page whenever that page is blocked, fails, lists nobody or reads short; a page that
+     reads well is preferred. Its people carry `discovery_source: pasted`. Nothing here
+     tries to get past a site's block.
 5. **Web search (always, in parallel)** — GPT-4o with `web_search_preview` searches for the
    same roster directly, reaching division pages, hospital microsites and news items that the
    configured URLs never touch. It runs on a background thread so its latency overlaps the

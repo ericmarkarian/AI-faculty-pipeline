@@ -36,6 +36,10 @@ load_dotenv()
 # locks. spawn starts a clean interpreter that re-imports the app.
 _MP_CTX = mp.get_context("spawn")
 
+# Largest pasted page accepted by /api/roster-paste (kept in step with pasted_roster.MAX_PASTE_CHARS;
+# not imported from there so this process never loads the pipeline's dependencies).
+_MAX_PASTE_CHARS = 3_000_000
+
 
 def _pipeline_child(kind: str, payload: dict, mpq) -> None:
     """Entry point that runs in the spawned process; streams results back via mpq."""
@@ -72,11 +76,60 @@ def _pipeline_child(kind: str, payload: dict, mpq) -> None:
                 on_enriched=on_enriched, on_qc_complete=on_qc_complete,
                 considerations=payload["considerations"],
                 on_discovery=on_discovery,
+                pasted_rosters=payload.get("pasted_rosters"),
             )
     except Exception as exc:  # noqa: BLE001 — surface any failure to the UI
         mpq.put({"type": "error", "message": str(exc)})
     finally:
         mpq.put({"type": "__child_done__"})
+
+
+def _paste_child(payload: dict, mpq) -> None:
+    """Runs in a spawned process: read one pasted roster page and send back the people."""
+    try:
+        if payload.get("api_key"):
+            os.environ["OPENAI_API_KEY"] = payload["api_key"]
+        import observe
+        from openai import OpenAI
+        from providers.pasted_roster import read_pasted_roster
+
+        client = observe.instrument_client(OpenAI(api_key=os.environ.get("OPENAI_API_KEY")))
+        result = read_pasted_roster(
+            payload["html"], payload["text"], payload["url"],
+            payload["school"], payload["discipline"], client,
+        )
+        mpq.put({"ok": True, **result})
+    except Exception as exc:  # noqa: BLE001 — every failure goes back to the browser as a message
+        mpq.put({"ok": False, "error": str(exc)})
+
+
+def _call_in_child(target, payload: dict, timeout: float = 240.0) -> dict:
+    """Run `target(payload, queue)` in a fresh process and return the one message it sends.
+
+    Same reason as the pipeline runs: the OpenAI client and HTML parsing load in a
+    process that exits, so the long-lived web worker stays small, and a per-request
+    API key never touches this process's environment.
+    """
+    mpq = _MP_CTX.Queue()
+    proc = _MP_CTX.Process(target=target, args=(payload, mpq), daemon=True)
+    proc.start()
+    try:
+        deadline = time.time() + timeout
+        while True:
+            try:
+                return mpq.get(timeout=1)
+            except queue.Empty:
+                if not proc.is_alive():
+                    try:
+                        return mpq.get(timeout=1)   # it may have answered just before exiting
+                    except queue.Empty:
+                        return {"ok": False, "error": "the reader stopped unexpectedly"}
+                if time.time() > deadline:
+                    return {"ok": False, "error": "reading the page took too long"}
+    finally:
+        proc.join(timeout=5)
+        if proc.is_alive():
+            proc.terminate()
 
 
 # ─────────────────────────────────────────────
@@ -427,6 +480,9 @@ def start_run():
     school_labels  = _school_labels(selected)
     discipline     = data.get("discipline") or "Pediatric Endocrinology"
     considerations = data.get("considerations") or ""
+    # Rosters the visitor pasted for pages the scraper could not read. Kept in their
+    # browser and sent with each run; validated inside the pipeline before use.
+    pasted_rosters = data.get("pasted_rosters") if isinstance(data.get("pasted_rosters"), list) else []
     _run_queue = queue.Queue()
 
     run_state = _start_run_state("search", discipline=discipline, schools=schools,
@@ -438,7 +494,7 @@ def start_run():
             _spawn_and_forward(
                 "search",
                 {"schools": schools, "discipline": discipline, "considerations": considerations,
-                 "api_key": api_key},
+                 "api_key": api_key, "pasted_rosters": pasted_rosters},
                 _run_queue,
                 run_state,
             )
@@ -447,6 +503,40 @@ def start_run():
 
     threading.Thread(target=run, daemon=True).start()
     return jsonify({"status": "started", "school_labels": school_labels})
+
+
+@app.route("/api/roster-paste", methods=["POST"])
+def roster_paste():
+    """Read a roster page the visitor opened and pasted in, for a page the scraper could not read.
+
+    Returns the people found; the browser keeps them and sends them back with later
+    runs (see /api/run "pasted_rosters"). Nothing is stored on the server.
+    """
+    data = request.json or {}
+    api_key = (data.get("api_key") or "").strip() or os.environ.get("OPENAI_API_KEY")
+    if not api_key:
+        return jsonify({"error": "No OpenAI API key saved — add your key to read a pasted page.",
+                        "code": "no_api_key"}), 400
+
+    fields = {k: data.get(k) if isinstance(data.get(k), str) else "" for k in
+              ("html", "text", "url", "school", "discipline")}
+    if not fields["school"].strip() or not fields["discipline"].strip():
+        return jsonify({"error": "Missing the institution or specialty for this page."}), 400
+    if not (fields["html"].strip() or fields["text"].strip()):
+        return jsonify({"error": "Nothing was pasted."}), 400
+    if len(fields["html"]) + len(fields["text"]) > _MAX_PASTE_CHARS:
+        return jsonify({"error": "That is too much text to read in one go — copy just the part of the "
+                                 "page that lists the team."}), 413
+
+    result = _call_in_child(_paste_child, {**fields, "api_key": api_key})
+    if not result.get("ok"):
+        return jsonify({"error": f"Could not read the pasted page: {result.get('error') or 'unknown error'}"}), 502
+    return jsonify({
+        "people": result.get("people") or [],
+        "left_out": result.get("left_out") or {},
+        "used_formatting": bool(result.get("used_formatting")),
+        "captured": time.strftime("%Y-%m-%d"),
+    })
 
 
 @app.route("/api/last-run")

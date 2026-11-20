@@ -742,6 +742,149 @@ function ApiKeyModal({ onDone, onSkip }) {
   );
 }
 
+/* ── Paste Roster Modal — a person supplies a page the pipeline's browser was refused ── */
+const LEFT_OUT_LABELS={trainee:'fellows or trainees',staff:'non-physician staff',emeritus:'emeritus or former'};
+const escapeHtml=t=>t.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+
+function PasteRosterModal({ target, discipline, getKey, onSaved, onNeedKey, onClose }) {
+  const [text,setText]           = useState('');
+  const [formatted,setFormatted] = useState(false);
+  const [busy,setBusy]           = useState(false);
+  const [error,setError]         = useState('');
+  const [result,setResult]       = useState(null);   // {people,left_out,captured}
+  // The clipboard's formatted copy of the page. It keeps the headings ("Fellows") and
+  // profile links that plain text loses, so it is what gets sent when there is one.
+  const htmlRef = useRef('');
+
+  useEffect(()=>{
+    const h=e=>{ if(e.key==='Escape'&&!busy) onClose(); };
+    document.addEventListener('keydown',h);
+    return ()=>document.removeEventListener('keydown',h);
+  },[onClose,busy]);
+
+  const onPaste = e => {
+    const cd=e.clipboardData; if(!cd) return;
+    const html=cd.getData('text/html')||'';
+    const plain=cd.getData('text/plain')||'';
+    const box=e.target;
+    const replacingAll=box.selectionStart===0&&box.selectionEnd===box.value.length;
+    if(replacingAll) htmlRef.current='';
+    // A second paste (page 2 of a long roster) is added to the first, formatted or not.
+    htmlRef.current+=html.trim()?html:`<pre>${escapeHtml(plain)}</pre>`;
+    setFormatted(f=>(replacingAll?false:f)||!!html.trim());
+    setError(''); setResult(null);
+  };
+  const onChange = e => {
+    setText(e.target.value);
+    if(!e.target.value.trim()){ htmlRef.current=''; setFormatted(false); }
+  };
+
+  const read = async () => {
+    if(!text.trim()||busy) return;
+    setBusy(true); setError(''); setResult(null);
+    try {
+      const resp=await fetch('/api/roster-paste',{method:'POST',headers:{'Content-Type':'application/json'},
+        body:JSON.stringify({html:htmlRef.current,text,url:target.url,school:target.school,discipline,api_key:getKey()||undefined})});
+      const data=await resp.json().catch(()=>({}));
+      if(!resp.ok){
+        if(data.code==='no_api_key') onNeedKey();
+        setError(data.error||'The server could not read the page.'); setBusy(false); return;
+      }
+      const people=data.people||[];
+      if(people.length>0) onSaved({school:target.school,label:target.label,discipline,url:target.url,type:target.type,captured:data.captured,people});
+      setResult({people,left_out:data.left_out||{},captured:data.captured});
+    } catch(e){ setError('Could not reach the server. Is it still running?'); }
+    setBusy(false);
+  };
+
+  const leftOut=result?Object.entries(result.left_out).map(([k,n])=>`${n} ${LEFT_OUT_LABELS[k]||k}`).join(', '):'';
+  const saved=!!(result&&result.people.length>0);
+  const canRead=!!text.trim()&&!busy;
+
+  return (
+    <div onMouseDown={e=>{ if(e.target===e.currentTarget&&!busy) onClose(); }} style={{
+      position:'fixed',inset:0,zIndex:1300,
+      background:'oklch(16% 0.022 25 / 0.50)',
+      display:'flex',alignItems:'center',justifyContent:'center',padding:24,
+    }}>
+      <div role="dialog" aria-label={`Paste the roster for ${target.label}`} style={{
+        background:'#fff',width:'100%',maxWidth:620,maxHeight:'90vh',overflowY:'auto',
+        border:'1px solid var(--border)',borderRadius:10,
+        boxShadow:'0 32px 80px oklch(16% 0.022 25 / 0.18)',
+        animation:'zoomIn 0.24s cubic-bezier(0.16,1,0.3,1)',
+      }}>
+        <div style={{padding:'24px 32px 16px',borderBottom:'1px solid var(--border-sub)'}}>
+          <div style={{fontSize:10,fontWeight:700,color:'var(--ink3)',textTransform:'uppercase',
+            letterSpacing:'0.12em',marginBottom:8}}>Paste a roster</div>
+          <div style={{fontFamily:"'Spectral',serif",fontSize:22,fontWeight:600,color:'var(--ink)',letterSpacing:'-0.01em'}}>
+            {target.label}
+          </div>
+        </div>
+
+        <div style={{padding:'18px 32px 26px'}}>
+          <p style={{fontSize:13.5,color:'var(--ink2)',lineHeight:1.6,margin:'0 0 12px'}}>
+            ATLAS could not read this page itself. Open it in your own browser, copy it, and paste it
+            below. ATLAS pulls out the faculty and uses them whenever the page can’t be read.
+          </p>
+          <ol style={{fontSize:13,color:'var(--ink2)',lineHeight:1.7,margin:'0 0 14px',paddingLeft:20}}>
+            <li><a href={target.url} target="_blank" rel="noreferrer"
+              style={{color:'var(--red)',fontWeight:600}}>Open the page</a> in a new tab.
+              <div style={{fontSize:11.5,color:'var(--ink3)',overflowWrap:'anywhere'}}>{target.url}</div></li>
+            <li>Select everything on it and copy (⌘A then ⌘C, or Ctrl+A then Ctrl+C).</li>
+            <li>Click in the box below and paste.</li>
+          </ol>
+
+          <textarea value={text} onChange={onChange} onPaste={onPaste} rows={7}
+            placeholder="Paste the page here" spellCheck={false} aria-label="Pasted page"
+            style={{width:'100%',boxSizing:'border-box',padding:'9px 11px',border:'1.5px solid var(--border)',
+              borderRadius:8,fontSize:12,fontFamily:'ui-monospace,SFMono-Regular,Menlo,monospace',
+              color:'var(--ink)',outline:'none',background:'#fff',resize:'vertical'}}/>
+          <div style={{fontSize:11.5,color:'var(--ink3)',marginTop:6}}>
+            {text.trim()
+              ? `${text.length.toLocaleString()} characters pasted${formatted?', with the page’s headings and links':''}.`
+              : 'Nothing pasted yet.'}
+          </div>
+
+          {error&&<div style={{marginTop:10,fontSize:12.5,lineHeight:1.5,color:'var(--qr-tx)',
+            background:'var(--qr-bg)',border:'1px solid var(--qr-bd)',borderRadius:8,padding:'8px 11px',overflowWrap:'anywhere'}}>{error}</div>}
+
+          {saved&&(
+            <div style={{marginTop:10,fontSize:12.5,lineHeight:1.55,color:'var(--qg-tx)',
+              background:'var(--qg-bg)',border:'1px solid var(--qg-bd)',borderRadius:8,padding:'8px 11px'}}>
+              <b>Saved {result.people.length} {result.people.length===1?'person':'people'}</b> from this page
+              {leftOut?` (left out: ${leftOut})`:''}. Run this institution again to add them to the results.
+              <div style={{marginTop:4,color:'var(--ink2)'}}>
+                {result.people.slice(0,8).map(p=>p.full_name).join(', ')}
+                {result.people.length>8?`, and ${result.people.length-8} more`:''}
+              </div>
+            </div>
+          )}
+          {result&&!saved&&(
+            <div style={{marginTop:10,fontSize:12.5,lineHeight:1.55,color:'var(--qy-tx)',
+              background:'var(--qy-bg)',border:'1px solid var(--qy-bd)',borderRadius:8,padding:'8px 11px'}}>
+              No faculty were found in what you pasted{leftOut?` (left out: ${leftOut})`:''}.
+              Make sure you copied the whole team page, then paste again.
+            </div>
+          )}
+
+          <div style={{display:'flex',alignItems:'center',justifyContent:'flex-end',gap:10,marginTop:18}}>
+            <button onClick={onClose} disabled={busy} style={{padding:'9px 18px',border:'1.5px solid var(--border)',
+              borderRadius:8,background:'var(--surface)',color:'var(--ink2)',fontSize:13,fontWeight:600,
+              cursor:busy?'default':'pointer'}}>{saved?'Done':'Cancel'}</button>
+            <button onClick={read} disabled={!canRead} style={{
+              padding:'9px 22px',border:'none',borderRadius:8,
+              background:canRead?'var(--red)':'var(--surface2)',
+              color:canRead?'#fff':'var(--ink3)',
+              fontSize:13,fontWeight:700,letterSpacing:'0.02em',
+              cursor:canRead?'pointer':'default',transition:'background 0.15s',
+            }}>{busy?'Reading…':(saved?'Read again':'Read this page')}</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 /* ── Custom Dropdown ── */
 function Dropdown({ value, onChange, options, placeholder, searchable }) {
   const [open,setOpen]=useState(false);
@@ -1448,6 +1591,16 @@ function App() {
   const [detailFaculty,setDetail]    = useState(null);
   const [schoolLabels,setSchoolLabels] = useState({});  // pipeline school name → name picked in the selector
   const [discovery,setDiscovery]       = useState([]);  // per-school discovery outcome from Agent 1
+  /* Rosters pasted in for pages ATLAS could not read. They live in this browser's
+     localStorage (the server keeps nothing) and ride along with every run. */
+  const [pastedRosters,setPastedRosters] = useState(()=>{
+    try{ const v=JSON.parse(localStorage.getItem('atlas_pasted_rosters_v1')||'[]'); return Array.isArray(v)?v:[]; }catch(e){ return []; }
+  });
+  const [pasteTarget,setPasteTarget]   = useState(null);  // {school,label,url,type} of the page being pasted
+  const storePasted=list=>{ setPastedRosters(list); try{ localStorage.setItem('atlas_pasted_rosters_v1',JSON.stringify(list)); }catch(e){} };
+  const samePaste=(r,school,url)=>r.school===school&&r.url===url&&r.discipline===specialty;
+  const handlePasteSaved=roster=>storePasted([...pastedRosters.filter(r=>!(r.school===roster.school&&r.url===roster.url&&r.discipline===roster.discipline)),roster]);
+  const removePasted=(school,url)=>storePasted(pastedRosters.filter(r=>!samePaste(r,school,url)));
   const [aboutOpen,setAboutOpen]     = useState(false);
 
   /* ── OpenAI key gate — popup on first open until a key has been saved.
@@ -1564,7 +1717,7 @@ function App() {
     setProgress({done:0,total:0,phase:`Scraping ${selected.length} institution${selected.length>1?'s':''}…`});
     if(esRef.current){ esRef.current.close(); esRef.current=null; }
     try {
-      const resp=await fetch('/api/run',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({schools:selected,discipline:specialty,considerations,api_key:getStoredKey()||undefined})});
+      const resp=await fetch('/api/run',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({schools:selected,discipline:specialty,considerations,api_key:getStoredKey()||undefined,pasted_rosters:pastedRosters.filter(r=>r.discipline===specialty)})});
       if(!resp.ok){ const err=await resp.json(); if(err.code==='no_api_key'){ setKeyModalOpen(true); setLoading(false); return; } setErrorMsg(err.error||'Server error'); setLoading(false); return; }
       const started=await resp.json().catch(()=>({}));
       setSchoolLabels(started.school_labels||{});
@@ -1811,6 +1964,10 @@ function App() {
   const hiddenRows=totalRows-displayed.length;
   const unrankedShown=rankFilter!=='ALL'?displayed.filter(f=>rankOf(f.title)===0).length:0;
   const discoveryIssues=discovery.filter(d=>(d.issues||[]).length>0);
+  // Pages worth pasting by hand: ATLAS was refused, the page failed, or it listed too few people.
+  const unreadPages=d=>(d.sources||[]).filter(s=>s.url&&(['blocked','error','empty'].includes(s.status)||s.short));
+  const pastedInUse=discovery.flatMap(d=>(d.sources||[]).filter(s=>s.pasted&&s.url).map(s=>({d,s})));
+  const pasteLinkStyle={background:'none',border:'none',padding:0,cursor:'pointer',color:'inherit',fontSize:'inherit',fontWeight:700,textDecoration:'underline'};
   const withH=displayed.filter(f=>f.h_index!=null);
   const nihN=displayed.filter(f=>(f.nih_grant_count||0)>0).length;
   const avgH=withH.length?Math.round(withH.reduce((s,f)=>s+(f.h_index||0),0)/withH.length):null;
@@ -1868,6 +2025,8 @@ function App() {
       {nlQcModal&&<QcModal faculty={nlQcModal} onClose={()=>setNlQcModal(null)}/>}
       {aboutOpen&&<AboutModal onClose={()=>setAboutOpen(false)}/>}
       {!intro&&keyModalOpen&&<ApiKeyModal onDone={handleKeySaved} onSkip={handleKeySkip}/>}
+      {pasteTarget&&!keyModalOpen&&<PasteRosterModal target={pasteTarget} discipline={specialty} getKey={getStoredKey}
+        onSaved={handlePasteSaved} onNeedKey={()=>setKeyModalOpen(true)} onClose={()=>setPasteTarget(null)}/>}
 
       {/* Topbar — cardinal masthead */}
       <div style={{background:'var(--red)',padding:'0 36px',flexShrink:0}}>
@@ -2100,9 +2259,44 @@ function App() {
               {discoveryIssues.length>0&&(
                 <div style={{marginBottom:12,padding:'10px 14px',borderRadius:8,background:'var(--qy-bg)',border:'1px solid var(--qy-bd)',color:'var(--qy-tx)',fontSize:12,lineHeight:1.55,overflowWrap:'anywhere'}}>
                   <div style={{fontWeight:700,marginBottom:4}}>{discoveryIssues.length} of {discovery.length} institution{discovery.length===1?'':'s'} may be incomplete</div>
-                  {discoveryIssues.map(d=>(
-                    <div key={d.school}><b>{schoolLabels[d.school]||d.school}</b> — {d.found} found. {d.issues.join('; ')}</div>
-                  ))}
+                  {discoveryIssues.map(d=>{
+                    const label=schoolLabels[d.school]||d.school;
+                    return (
+                      <div key={d.school} style={{marginBottom:4}}>
+                        <div><b>{label}</b> — {d.found} found. {d.issues.join('; ')}</div>
+                        {unreadPages(d).map(s=>{
+                          const kept=pastedRosters.find(r=>samePaste(r,d.school,s.url));
+                          return (
+                            <div key={s.url} style={{marginTop:3}}>
+                              <button onClick={()=>setPasteTarget({school:d.school,label,url:s.url,type:s.type})}
+                                style={{padding:'3px 10px',border:'1px solid var(--qy-bd)',borderRadius:6,background:'#fff',
+                                  color:'var(--qy-tx)',fontSize:11.5,fontWeight:700,cursor:'pointer'}}>
+                                {kept?'Paste this page again':'Paste this page instead'}
+                              </button>
+                              {kept&&<span style={{marginLeft:8}}>Saved {kept.people.length} people pasted on {kept.captured} — run this institution again to use them.</span>}
+                            </div>
+                          );
+                        })}
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+
+              {/* Pages a pasted roster stood in for on this run */}
+              {pastedInUse.length>0&&(
+                <div style={{marginBottom:12,padding:'8px 14px',borderRadius:8,background:'var(--surface)',border:'1px solid var(--border)',color:'var(--ink2)',fontSize:12,lineHeight:1.55,overflowWrap:'anywhere'}}>
+                  {pastedInUse.map(({d,s})=>{
+                    const label=schoolLabels[d.school]||d.school;
+                    return (
+                      <div key={d.school+s.url}>
+                        <b>{label}</b> — used the roster you pasted{s.pasted.on?` on ${s.pasted.on}`:''} ({s.pasted.found} people) for a page ATLAS could not read.{' '}
+                        <button style={pasteLinkStyle} onClick={()=>setPasteTarget({school:d.school,label,url:s.url,type:s.type})}>Paste again</button>
+                        {' · '}
+                        <button style={pasteLinkStyle} onClick={()=>removePasted(d.school,s.url)}>Remove</button>
+                      </div>
+                    );
+                  })}
                 </div>
               )}
 

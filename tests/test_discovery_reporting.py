@@ -246,8 +246,11 @@ def test_a_search_run_streams_discovery_and_records_through_to_done(srv, monkeyp
     """
     import faculty_search
 
+    received: dict = {}
+
     def fake_run_pipeline(schools=None, discipline=None, on_enriched=None, on_qc_complete=None,
-                          considerations="", on_discovery=None):
+                          considerations="", on_discovery=None, pasted_rosters=None):
+        received["pasted_rosters"] = pasted_rosters
         on_discovery(_REPORT)
         on_enriched(_PERSON, 1, 1)
         on_qc_complete({**_PERSON, "qc": {}})
@@ -255,7 +258,10 @@ def test_a_search_run_streams_discovery_and_records_through_to_done(srv, monkeyp
     monkeypatch.setattr(faculty_search, "run_pipeline", fake_run_pipeline)
     client = srv.app.test_client()
 
-    started = client.post("/api/run", json={"schools": ["Boston Children's Hospital"], "discipline": "Test"})
+    pasted = [{"school": "Harvard Medical School", "discipline": "Test", "url": "https://h.example/team",
+               "type": "hospital", "captured": "2026-11-20", "people": [{"full_name": "Casey Morgan"}]}]
+    started = client.post("/api/run", json={"schools": ["Boston Children's Hospital"], "discipline": "Test",
+                                            "pasted_rosters": pasted})
     assert started.status_code == 200
     assert started.get_json()["school_labels"] == {"Harvard Medical School": "Boston Children's Hospital"}
 
@@ -264,7 +270,31 @@ def test_a_search_run_streams_discovery_and_records_through_to_done(srv, monkeyp
     assert [e["type"] for e in events] == ["discovery", "faculty", "qc_update", "done"]
     assert events[0]["data"] == _REPORT
 
+    assert received["pasted_rosters"] == pasted      # handed to the pipeline as sent
+
     last = client.get("/api/last-run").get_json()
     assert last["status"] == "completed" and last["error"] is None
     assert last["discovery"] == _REPORT
     assert [r["full_name"] for r in last["records"]] == ["Jordan Vega"]
+
+
+def test_alerts_name_a_page_that_came_back_short(monkeypatch):
+    observe._reset_metrics()
+    monkeypatch.setattr(observe, "log", lambda *a, **k: None)
+    discovery = [{"school": "School A", "found": 12, "issues": ["Fewer people than expected on: ..."],
+                  "sources": [{"type": "university", "url": "https://a.example/faculty", "status": "ok",
+                               "found": 12, "expected": 34, "short": True}]}]
+    alerts = observe.run_alert_checks(12, "Test", discovery=discovery)
+    assert "ROSTER_SHORT: School A — https://a.example/faculty (12 found, 34 expected)" in alerts
+
+
+def test_agent1_passes_on_notes_about_people_left_out(fs):
+    provider = _Provider(
+        records=[{"full_name": "Casey Morgan", "title": "Professor", "discovery_source": "hospital"}],
+        sources=[{"type": "hospital", "url": "https://h.example/team", "status": "ok", "found": 1,
+                  "detail": "", "left_out": {"trainee": 10}}],
+    )
+    fs.agent1_scrape("School A", scraper=provider, discipline="Test")
+    summary = fs._discovery_reports["School A"]
+    assert summary["issues"] == []
+    assert summary["notes"] == ["Left out 10 listed as fellows or trainees on the hospital page"]

@@ -1,0 +1,42 @@
+{
+  "Pediatric Endocrinology": {
+    "Baylor College of Medicine / Texas Children's Hospital": {
+      "https://www.bcm.edu/departments/pediatrics/divisions-and-centers/diabetes-and-endocrinology/faculty-and-staff/faculty": {
+        "checked": "2026-11-19",
+        "count": 34
+      }
+    },
+    "Harvard Medical School": {
+      "https://research.childrenshospital.org/research-units/endocrinology-research/meet-our-team": {
+        "checked": "2026-11-19",
+        "count": 6
+      },
+      "https://www.childrenshospital.org/services/endocrinology/meet-our-team": {
+        "checked": "2026-11-19",
+        "count": 41
+      }
+    },
+    "University of Cincinnati College of Medicine / Cincinnati Children's": {
+      "https://www.cincinnatichildrens.org/research/divisions/e/endocrinology/team": {
+        "checked": "2026-11-19",
+        "count": 16
+      },
+      "https://www.cincinnatichildrens.org/service/e/endocrinology/team": {
+        "checked": "2026-11-19",
+        "count": 23
+      }
+    },
+    "University of Florida College of Medicine": {
+      "https://endo.pediatrics.med.ufl.edu/faculty-staff/faculty/": {
+        "checked": "2026-11-19",
+        "count": 8
+      }
+    },
+    "University of Pennsylvania Perelman School of Medicine": {
+      "https://www.chop.edu/centers-programs/division-endocrinology-and-diabetes/our-team": {
+        "checked": "2026-11-20",
+        "count": 41
+      }
+    }
+  }
+}

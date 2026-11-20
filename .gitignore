@@ -12,3 +12,4 @@ ARCHITECTURE_AUDIT.md
 
 .DS_Store
 data/last_run_*.json
+faculty_summaries.txt
