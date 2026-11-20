@@ -21,11 +21,14 @@ import unicodedata
 from typing import Any, Iterable, Sequence
 
 from providers.base import FacultyRecord
+from providers.roster_counts import MIN_COUNT, is_short
+from providers.roster_reading import CATEGORY_LABELS
 from providers.utils import clean_url
 
 SOURCE_UNIVERSITY = "university"
 SOURCE_HOSPITAL = "hospital"
 SOURCE_UNKNOWN = "unknown"      # legacy faculty_urls.json entries with a flat "url"
+SOURCE_PASTED = "pasted"        # a roster page a person opened and pasted in (see pasted_roster.py)
 SOURCE_WEB_SEARCH = "web_search"
 
 # Lower number == more trusted. A page we fetched and read beats a page the model
@@ -35,6 +38,7 @@ SOURCE_PRIORITY: dict[str, int] = {
     SOURCE_UNIVERSITY: 0,
     SOURCE_HOSPITAL:   1,
     SOURCE_UNKNOWN:    2,
+    SOURCE_PASTED:     2,   # page-grounded like a scrape, just fetched by a person
     SOURCE_WEB_SEARCH: 3,
 }
 _UNRANKED_PRIORITY = max(SOURCE_PRIORITY.values()) + 1
@@ -301,33 +305,75 @@ def discovery_summary(school: str, records: Sequence[dict], source_report: dict 
     another provider (or the plain web-search fallback) produced the roster.
 
     `issues` lists what a reader of the results needs to know: the school came back
-    empty, or a directory page was blocked / failed / listed nobody, in which case
-    the roster rests on the remaining sources and is probably incomplete.
+    empty, or a directory page was blocked / failed / listed nobody / listed far fewer
+    people than expected, in which case the roster rests on the remaining sources
+    and is probably incomplete.
+
+    `notes` records what the reading did that is not a problem: people left out as
+    trainees, staff or emeritus, a roster reached through a link from the saved page
+    (a hint that the saved URL should be updated), and a pasted roster standing in
+    for a page that could not be read.
     """
-    # Details are shown to the user and written into alerts, so keep them to one line.
-    sources = [
-        {**source, "detail": _brief(source["detail"])} if source.get("detail") else source
-        for source in (source_report or {}).get("sources") or []
-    ]
+    report = source_report or {}
     issues: list[str] = []
+    notes: list[str] = []
     if not records:
         issues.append("No faculty found")
-    for source in sources:
+
+    sources: list[dict] = []
+    for raw in report.get("sources") or []:
+        # Details are shown to the user and written into alerts, so keep them to one line.
+        source = {**raw, "detail": _brief(raw["detail"])} if raw.get("detail") else dict(raw)
         status = source.get("status")
         kind = source.get("type")
         page = f"{kind} page" if kind in (SOURCE_UNIVERSITY, SOURCE_HOSPITAL) else "directory page"
         where = f"{page} {source.get('url') or ''}".strip()
         detail = f" ({source['detail']})" if source.get("detail") else ""
-        if status == "blocked":
-            issues.append(f"Blocked: {where}{detail}")
+        expected = source.get("expected")
+        missing = f"; about {expected} people expected there" if expected else ""
+
+        pasted = source.get("pasted") or {}
+        if pasted:
+            when = f"pasted on {pasted['on']}" if pasted.get("on") else "pasted earlier"
+            if status == "pasted":
+                notes.append(f"Could not read the {page}{detail}; used the roster {when} "
+                             f"({pasted.get('found')} people)")
+            else:
+                notes.append(f"Added the roster {when} for the {page} ({pasted.get('found')} people)")
+            if pasted.get("stale"):
+                issues.append(f"The roster pasted for the {page} is old ({pasted.get('on')}) — "
+                              f"open {source.get('url')} and paste it again")
+
+        if status == "pasted":
+            pass  # covered by the pasted roster — not a gap in the results
+        elif status == "blocked":
+            issues.append(f"Blocked: {where}{detail}{missing}")
         elif status == "error":
-            issues.append(f"Could not load: {where}{detail}")
+            issues.append(f"Could not load: {where}{detail}{missing}")
         elif status == "empty":
-            issues.append(f"No faculty listed on: {where}")
+            issues.append(f"No faculty listed on: {where}{missing}")
+        elif expected and expected >= MIN_COUNT and is_short(source.get("found") or 0, expected):
+            source["short"] = True
+            when = f" when checked {source['expected_checked']}" if source.get("expected_checked") else " expected"
+            issues.append(f"Fewer people than expected on: {where} "
+                          f"({source.get('found') or 0} found; {expected}{when})")
+
+        followed = source.get("followed")
+        if followed:
+            notes.append(f"Read a roster linked from the {page}: {followed.get('url')} "
+                         f"({followed.get('found')} people; the saved page lists {followed.get('own_found')})")
+        for category, count in sorted((source.get("left_out") or {}).items()):
+            notes.append(f"Left out {count} listed as {CATEGORY_LABELS.get(category, category)} on the {page}")
+        sources.append(source)
+
+    for category, count in sorted((report.get("web_search_left_out") or {}).items()):
+        notes.append(f"Left out {count} returned by web search as {CATEGORY_LABELS.get(category, category)}")
+
     return {
         "school": school,
         "found": len(records),
         "by_source": source_breakdown(records),
         "sources": sources,
         "issues": issues,
+        "notes": notes,
     }

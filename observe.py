@@ -381,6 +381,11 @@ def run_alert_checks(faculty_found: int, discipline: str, discovery: list | None
                     f"DIRECTORY_UNREAD: {school} — {source.get('url') or source.get('type')} "
                     f"({source.get('detail') or source.get('status')})"
                 )
+            elif source.get("short"):
+                alerts.append(
+                    f"ROSTER_SHORT: {school} — {source.get('url') or source.get('type')} "
+                    f"({source.get('found')} found, {source.get('expected')} expected)"
+                )
 
     total_api    = sum(m["api_calls"].values())
     total_errors = sum(m["api_errors"].values())

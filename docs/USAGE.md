@@ -23,6 +23,7 @@ file in the repo root is loaded automatically):
 | `SITE_PASSWORD` | Optional | If set, the web UI requires this password (HTTP basic auth) |
 | `PORT` | Optional | Web server port (default `5050`) |
 | `AGENT1_WEB_SEARCH` | Optional | `0` runs Agent 1 discovery from the scraped directory pages only. Default `1` — directory scrape **and** GPT-4o web search, unioned (one extra web-search call per school) |
+| `AGENT1_FOLLOW_LINKS` | Optional | `0` stops Agent 1 from following a "meet our team" link when a saved directory page lists almost nobody. Default `1` (at most two extra page reads per thin page) |
 
 > **Scopus note:** the Scopus API generally requires your institution's network or VPN
 > (or a valid `SCOPUS_INSTTOKEN`). If Scopus is unavailable, the pipeline automatically
@@ -178,6 +179,9 @@ pytest
 | All h-index values from OpenAlex | Scopus key missing or off-network — set `SCOPUS_API_KEY` / `SCOPUS_INSTTOKEN`, or accept the OpenAlex fallback |
 | `LOW_DISCOVERY` alert / very few faculty | Directory page structure changed or the wrong URL was cached — check/clear the entry in `data/faculty_urls.json` |
 | "N institutions may be incomplete" banner, `ZERO_FACULTY` / `DIRECTORY_UNREAD` alerts | That school's directory page was blocked, failed to load, or lists no one. Open the URL named in the message: if it is an overview or fellowship page, point `data/faculty_urls.json` at the page that actually lists faculty; if the site blocks automated browsers, add the people through the Name Lookup tab |
+| Banner says a page is "Blocked" (or could not be loaded) | The site refused ATLAS's browser. Click **Paste this page instead** in the banner, open the page in your own browser, select all, copy, and paste it into the box. ATLAS reads the faculty from it and saves them in your browser; run that institution again to add them to the results. The saved roster is reused on later runs until you remove it, and ATLAS asks for a fresh paste after about six months |
+| Banner says "Fewer people than expected on: …" / `ROSTER_SHORT` alert | The page listed far fewer people than it did when last read well (counts are in `data/roster_counts.json`). Open the URL: if the roster moved, update `data/faculty_urls.json`; if the division really shrank, lower the count in `roster_counts.json` |
+| Fellows, nurses or emeritus faculty missing from a roster | By design — they are screened out by title or by the page section they sit under, and the run log says how many ("Left out 10 listed as fellows or trainees…"). Rules are in `providers/roster_reading.py` |
 | Export has fewer rows than the run found | The CSV is the filtered view — the button shows "(N of M)" and the file name ends in `_filtered`. Clear the filters to export everything |
 | People with "Attending Physician" or no title appear under a rank filter | Their title states no academic rank, so the filter cannot place them and keeps them (counted as "with no rank listed") |
 | Many `institution_unconfirmed` NIH flags | Institution aliases missing from the xlsx / lookup tables — add them |

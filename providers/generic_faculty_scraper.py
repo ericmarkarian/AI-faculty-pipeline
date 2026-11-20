@@ -30,11 +30,20 @@ from openai import OpenAI
 
 import observe
 from providers.base import ScraperProvider, FacultyRecord
-from providers.faculty_merge import SOURCE_WEB_SEARCH, merge_faculty, source_breakdown
+from providers.faculty_merge import (
+    SOURCE_PASTED, SOURCE_WEB_SEARCH, _page_key, dedupe_by_name, merge_faculty, source_breakdown,
+)
+from providers.pasted_roster import is_stale
+from providers.roster_counts import RosterCounts, is_short
+from providers.roster_reading import count_by_category, screen_roster, split_chunks, team_links
 from providers.utils import CHROMIUM_LAUNCH_ARGS, _PLAYWRIGHT_SEM
 
 # Web search is on by default; AGENT1_WEB_SEARCH=0/false/no turns it off.
 _WEB_SEARCH_DEFAULT = os.environ.get("AGENT1_WEB_SEARCH", "1").lower() not in ("0", "false", "no")
+# When a saved directory page lists almost nobody, look for its "meet our team" link
+# and read that too. AGENT1_FOLLOW_LINKS=0/false/no turns this off.
+_FOLLOW_LINKS_DEFAULT = os.environ.get("AGENT1_FOLLOW_LINKS", "1").lower() not in ("0", "false", "no")
+_MAX_FOLLOWED_LINKS = 2  # each one is another browser fetch + extraction
 
 # Keep chunks small: GPT-4o silently under-returns when asked to extract a long
 # roster from one large block (a 75-person page sent whole yields ~8 of them).
@@ -158,8 +167,18 @@ def _fetch_html_playwright(url: str) -> str:
     return html
 
 
+# Headings survive the flattening below as "\x02<level>\x03<text>\x04" and are then
+# rewritten as markdown-style lines. Control characters cannot occur in page text.
+_HEADING_TOKEN_RE = re.compile(r"\s*\x02([1-6])\x03(.*?)\x04\s*", re.DOTALL)
+
+
 def _html_to_text(html: str, base_url: str = "") -> str:
-    """Strip chrome, preserve hrefs inline so GPT-4o can extract profile URLs."""
+    """Strip chrome; keep hrefs inline (for profile URLs) and headings as their own lines.
+
+    A heading becomes "## Fellows" (one # per level) on a line of its own. A roster
+    page groups people under headings — faculty, fellows, staff, emeritus — and
+    flattened text loses which group each person belongs to.
+    """
     soup = BeautifulSoup(html, "html.parser")
     for tag in soup(["script", "style", "nav", "footer", "header", "noscript", "meta", "link"]):
         tag.decompose()
@@ -169,7 +188,14 @@ def _html_to_text(html: str, base_url: str = "") -> str:
             href = urljoin(base_url, href)
         if href.startswith("http"):
             a.replace_with(f"{a.get_text(strip=True)} [{href}]")
-    return soup.get_text(" ", strip=True)
+    for heading in soup.find_all(["h1", "h2", "h3", "h4", "h5", "h6"]):
+        label = " ".join(heading.get_text(" ", strip=True).split())
+        if label:
+            heading.replace_with(f"\x02{heading.name[1]}\x03{label}\x04")
+    text = soup.get_text(" ", strip=True)
+    return _HEADING_TOKEN_RE.sub(
+        lambda m: f"\n\n{'#' * int(m.group(1))} {m.group(2).strip()}\n", text
+    ).strip()
 
 
 def _pagination_urls(html: str, base_url: str) -> list[str]:
@@ -204,10 +230,15 @@ def _log_cost(model: str, usage) -> float:
     return cost
 
 
-def _extract_via_gpt4o(text: str, school: str, discipline: str, client: OpenAI, model: str = "gpt-4o") -> list[dict]:
-    """Send plain-text page content to GPT-4o and extract a structured faculty list."""
-    step = max(_TEXT_CHUNK_CHARS - _TEXT_CHUNK_OVERLAP, 1)
-    chunks = [text[i:i + _TEXT_CHUNK_CHARS] for i in range(0, len(text), step)]
+def _extract_via_gpt4o(text: str, school: str, discipline: str, client: OpenAI, model: str = "gpt-4o",
+                       errors: list | None = None) -> list[dict]:
+    """Send plain-text page content to GPT-4o and extract a structured faculty list.
+
+    A chunk that fails is skipped so the rest of the page still counts. Pass `errors`
+    (a list) to be told why — otherwise "the model was unreachable" and "the page
+    lists nobody" both come back as an empty list.
+    """
+    chunks = split_chunks(text, _TEXT_CHUNK_CHARS, _TEXT_CHUNK_OVERLAP)
     print(f"    [GenericScraper] Extracting from {len(chunks)} text chunk(s)")
 
     all_items: list[dict] = []
@@ -220,7 +251,9 @@ def _extract_via_gpt4o(text: str, school: str, discipline: str, client: OpenAI, 
 School: {school}
 Discipline: {discipline}
 
-Page text (chunk {i + 1} of {len(chunks)}):
+Page text (chunk {i + 1} of {len(chunks)}). Lines that start with # are headings on the page: \
+some name a group of people ("## Faculty", "## Fellows", "## Emeritus"), and a person's own name \
+may also be written as a heading.
 {chunk}
 
 Extract faculty members visible in this chunk whose PRIMARY discipline is {discipline}. Include people with academic appointments (Professor, Associate Professor, Assistant Professor, Instructor, Lecturer, Researcher, Scientist, Attending) whose title or listed specialty indicates they work in {discipline}. Exclude anyone whose title shows a different primary specialty (e.g. "by courtesy" appointments, visiting faculty from unrelated fields, or people whose title names a different department as their main affiliation). Exclude residents, fellows, nurses, and administrative staff.
@@ -229,6 +262,8 @@ Return ONLY a JSON array with no explanation. Each item must have:
 - "full_name": string
 - "title": their academic rank/title string (or null)
 - "profile_url": URL to their individual profile page if visible in the text (or null)
+- "section": the group heading this person is listed under, copied from the page without \
+the # marks (e.g. "Faculty", "Fellows"), or null if they are not under one
 
 If no faculty are visible, return an empty array: []
 """
@@ -253,6 +288,8 @@ If no faculty are visible, return an empty array: []
             print(f"    [GenericScraper] Chunk {i + 1}/{len(chunks)}: {new_count} new faculty")
         except Exception as e:
             print(f"    [GenericScraper] Chunk {i + 1} failed: {e}")
+            if errors is not None:
+                errors.append(str(e))
 
     if len(chunks) > 1:
         print(f"    [GenericScraper] Total extraction cost: ${total_cost:.5f}")
@@ -326,6 +363,14 @@ Only include faculty (professors/instructors/researchers), not residents or fell
     return _parse_faculty_array(raw)
 
 
+def _count_people(items: list) -> int:
+    """Distinct people in a list of extracted items (the model may repeat someone)."""
+    return len(dedupe_by_name([
+        {**item, "full_name": item.get("full_name") or item.get("name")}
+        for item in items if isinstance(item, dict)
+    ]))
+
+
 def _print_source_breakdown(records: list[FacultyRecord], school: str) -> None:
     """Report which source each person came from — the audit trail for batch/manual gaps."""
     counts = source_breakdown(records)
@@ -348,14 +393,57 @@ class GenericFacultyScraper(ScraperProvider):
         request_delay: float = 1.0,
         extraction_model: str = "gpt-4o",
         use_web_search: bool | None = None,
+        follow_links: bool | None = None,
+        counts_path: str | None = None,
     ) -> None:
         self._urls_path = urls_path
         self._urls = _load_urls(urls_path)
         self._delay = request_delay
         self._extraction_model = extraction_model
         self._use_web_search = _WEB_SEARCH_DEFAULT if use_web_search is None else use_web_search
+        self._follow_links = _FOLLOW_LINKS_DEFAULT if follow_links is None else follow_links
+        # Counts live beside the URL file, so a scraper pointed at a scratch URL file
+        # (tests, tools) never touches the real history.
+        self._counts = RosterCounts(counts_path or Path(urls_path).with_name("roster_counts.json"))
         self._client = observe.instrument_client(OpenAI(api_key=os.environ.get("OPENAI_API_KEY")))
         self.last_report: dict | None = None  # per-source outcome of the latest get_faculty()
+        self._pasted: list[dict] = []         # rosters pasted in by a person (see use_pasted_rosters)
+
+    def use_pasted_rosters(self, rosters: list[dict] | None) -> None:
+        """Give the scraper rosters a person pasted in (already cleaned — see
+        pasted_roster.clean_pasted_rosters). Each one stands in for its page whenever
+        that page cannot be read, or reads short; a page that reads well is preferred.
+        """
+        self._pasted = list(rosters or [])
+
+    def _apply_pasted_rosters(self, school: str, discipline: str, report: dict,
+                              results: list[tuple[str, list[dict]]]) -> None:
+        for roster in self._pasted:
+            if roster["school"] != school or roster["discipline"] != discipline:
+                continue
+            source = next((s for s in report["sources"]
+                           if _page_key(s.get("url")) == _page_key(roster["url"])), None)
+            if source is not None and source["status"] == "ok" and not is_short(
+                    source.get("found") or 0, source.get("expected")):
+                continue  # the page read fine this time — fresher than the paste
+            people = [dict(person) for person in roster["people"]]
+            pasted = {"on": roster.get("captured"), "found": len(people), "stale": is_stale(roster.get("captured"))}
+            print(f"    [GenericScraper] Using the roster pasted on {pasted['on']} for {roster['url']} "
+                  f"({len(people)} people)")
+            results.append((SOURCE_PASTED, people))
+            if source is None:
+                # Pasted from a page that is not one of this run's sources — still a roster.
+                report["sources"].append({"type": roster["type"], "url": roster["url"], "status": "pasted",
+                                          "found": len(people), "detail": "", "pasted": pasted})
+                continue
+            source["pasted"] = pasted
+            if source["status"] != "ok":
+                source["status"] = "pasted"      # the gap is covered; keep `detail` to say why it was needed
+                source["found"] = len(people)
+            else:
+                source["found"] = (source.get("found") or 0) + len(people)
+            # A person read this page: that is a count worth remembering for it.
+            self._counts.note(discipline, school, source["url"], len(people))
 
     def _discover_urls(self, school: str, discipline: str) -> list[tuple[str, str]]:
         """Ask GPT-4o with web search to find university + hospital faculty URLs, then cache."""
@@ -428,8 +516,12 @@ class GenericFacultyScraper(ScraperProvider):
         return sources
 
 
-    def _scrape_directory(self, url: str, source_type: str, school: str, discipline: str) -> list[dict]:
-        """Fetch one directory URL (plus its pagination) and extract faculty from it."""
+    def _read_page(self, url: str, source_type: str, school: str, discipline: str) -> dict:
+        """Fetch one URL (plus its pagination) and extract the faculty listed on it.
+
+        Returns {"items", "left_out", "html"}: the people kept, the people screened out
+        as trainees / staff / emeritus (see roster_reading), and the first page's HTML.
+        """
         print(f"    [GenericScraper] Fetching ({source_type}): {url}")
         html = _fetch_html_playwright(url)
         text = _html_to_text(html, base_url=url)
@@ -445,7 +537,61 @@ class GenericFacultyScraper(ScraperProvider):
             except Exception as e:
                 print(f"    [GenericScraper] Skipping pagination URL {page_url}: {e}")
 
-        return _extract_via_gpt4o(text, school, discipline, self._client, self._extraction_model)
+        extracted = _extract_via_gpt4o(text, school, discipline, self._client, self._extraction_model)
+        items, left_out = screen_roster(extracted, text)
+        for entry in left_out:
+            print(f"    [GenericScraper] Left out {entry['full_name']!r} ({entry['category']}; {entry['why']})")
+        return {"items": items, "left_out": left_out, "html": html}
+
+    def _read_directory(self, url: str, source_type: str, school: str, discipline: str,
+                        expected: int | None = None) -> dict:
+        """Read a saved directory URL; if it lists almost nobody, try its "team" link too.
+
+        A saved URL is sometimes a division overview or a fellowship page rather than
+        the roster. When the page comes back short (see roster_counts.is_short), the
+        links on it that read like this division's roster are read as well — at most
+        _MAX_FOLLOWED_LINKS — and the fullest one is added to what the page itself gave.
+
+        Returns {"items", "left_out", "found", "own_found", "followed", "looked_further"}.
+        """
+        page = self._read_page(url, source_type, school, discipline)
+        items, left_out = list(page["items"]), list(page["left_out"])
+        own_found = _count_people(items)
+        followed = None
+        looked_further = False
+
+        if self._follow_links and is_short(own_found, expected):
+            best: tuple[str, dict] | None = None
+            for link in team_links(page["html"], url, discipline, limit=_MAX_FOLLOWED_LINKS):
+                looked_further = True
+                time.sleep(self._delay)
+                try:
+                    linked = self._read_page(link, source_type, school, discipline)
+                except Exception as e:  # a dead or blocked link just isn't the roster
+                    print(f"    [GenericScraper] Could not read linked page {link}: {e}")
+                    continue
+                if best is None or _count_people(linked["items"]) > _count_people(best[1]["items"]):
+                    best = (link, linked)
+            if best and _count_people(best[1]["items"]) > own_found:
+                link, linked = best
+                followed = {"url": link, "found": _count_people(linked["items"])}
+                print(f"    [GenericScraper] {source_type} page listed {own_found}; "
+                      f"its linked page lists {followed['found']}: {link}")
+                items += linked["items"]
+                left_out += linked["left_out"]
+
+        return {
+            "items": items,
+            "left_out": left_out,
+            "found": _count_people(items),
+            "own_found": own_found,
+            "followed": followed,
+            "looked_further": looked_further,
+        }
+
+    def _scrape_directory(self, url: str, source_type: str, school: str, discipline: str) -> list[dict]:
+        """Faculty listed at one directory URL (kept for callers that want only the list)."""
+        return self._read_directory(url, source_type, school, discipline)["items"]
 
     def _search_web(self, school: str, discipline: str) -> list[dict]:
         """Web-search source. Never raises — a failure here must not lose the scrape."""
@@ -474,12 +620,28 @@ class GenericFacultyScraper(ScraperProvider):
             for url, source_type in sources:
                 time.sleep(self._delay)
                 outcome = {"type": source_type, "url": url, "status": "ok", "found": 0, "detail": ""}
+                known = self._counts.get(discipline, school, url)
+                if known:
+                    # How many people this page listed when it last read well — lets the
+                    # report say "12 found, 34 expected" instead of passing a short list.
+                    outcome["expected"] = known["count"]
+                    outcome["expected_checked"] = known.get("checked")
                 try:
-                    extracted = self._scrape_directory(url, source_type, school, discipline)
-                    print(f"    [GenericScraper] {source_type}: {len(extracted)} faculty extracted")
-                    outcome["found"] = len(extracted)
+                    read = self._read_directory(url, source_type, school, discipline,
+                                                expected=known["count"] if known else None)
+                    extracted = read["items"]
+                    print(f"    [GenericScraper] {source_type}: {read['found']} faculty extracted")
+                    outcome["found"] = read["found"]
+                    if read["left_out"]:
+                        outcome["left_out"] = count_by_category(read["left_out"])
+                    if read["followed"]:
+                        outcome["followed"] = {**read["followed"], "own_found": read["own_found"]}
                     if not extracted:
                         outcome["status"] = "empty"
+                    else:
+                        # Looking further and finding nothing fuller confirms a small division.
+                        self._counts.note(discipline, school, url, read["found"],
+                                          confirmed=read["looked_further"] and not read["followed"])
                     results.append((source_type, extracted))
                 except DirectoryBlocked as e:
                     outcome.update(status="blocked", detail=str(e))
@@ -491,9 +653,14 @@ class GenericFacultyScraper(ScraperProvider):
                     print(f"    [GenericScraper] Playwright fetch failed ({source_type}, {e})")
                 report["sources"].append(outcome)
 
+            self._apply_pasted_rosters(school, discipline, report, results)
+
             if web_future is not None:
-                web_items = web_future.result()
+                # No page to read sections from here — titles are all there is to judge by.
+                web_items, web_left_out = screen_roster(web_future.result())
                 report["web_search_found"] = len(web_items)
+                if web_left_out:
+                    report["web_search_left_out"] = count_by_category(web_left_out)
                 results.append((SOURCE_WEB_SEARCH, web_items))
 
         if not results:

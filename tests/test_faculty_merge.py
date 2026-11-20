@@ -458,3 +458,46 @@ def test_discovery_summary_keeps_a_long_browser_error_to_one_short_line():
         "x" * 159 + "…",
     ]
     assert report["sources"][0]["detail"] == noisy  # input left untouched
+
+
+@pytest.mark.unit
+def test_discovery_summary_notes_who_was_left_out_and_which_link_was_followed():
+    """Neither is a problem with the roster, so they are notes, not issues."""
+    records = [{"full_name": "Casey Morgan", "discovery_source": SOURCE_UNIVERSITY}]
+    report = {
+        "sources": [{
+            "type": SOURCE_UNIVERSITY, "url": "https://u.example/overview", "status": "ok", "found": 34, "detail": "",
+            "followed": {"url": "https://u.example/overview/faculty", "found": 33, "own_found": 2},
+            "left_out": {"trainee": 10, "staff": 1},
+        }],
+        "web_search_left_out": {"emeritus": 2},
+    }
+    summary = discovery_summary(_SCHOOL, records, report)
+
+    assert summary["issues"] == []
+    assert summary["notes"] == [
+        "Read a roster linked from the university page: https://u.example/overview/faculty "
+        "(33 people; the saved page lists 2)",
+        "Left out 1 listed as non-physician staff on the university page",
+        "Left out 10 listed as fellows or trainees on the university page",
+        "Left out 2 returned by web search as emeritus or former",
+    ]
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize("found,expected,flagged", [
+    (20, 34, True),     # under 60% of what the page listed before
+    (21, 34, False),
+    (1, 3, False),      # too small a division for a shortfall to mean anything
+])
+def test_discovery_summary_flags_a_page_listing_far_fewer_people_than_expected(found, expected, flagged):
+    records = [{"full_name": "Casey Morgan", "discovery_source": SOURCE_UNIVERSITY}]
+    report = {"sources": [{"type": SOURCE_UNIVERSITY, "url": "https://u.example/faculty", "status": "ok",
+                           "found": found, "detail": "", "expected": expected, "expected_checked": "2026-11-19"}]}
+    summary = discovery_summary(_SCHOOL, records, report)
+
+    expected_issues = [f"Fewer people than expected on: university page https://u.example/faculty "
+                       f"({found} found; {expected} when checked 2026-11-19)"] if flagged else []
+    assert summary["issues"] == expected_issues
+    assert bool(summary["sources"][0].get("short")) is flagged
+    assert "short" not in report["sources"][0]      # input left untouched

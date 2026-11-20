@@ -38,6 +38,7 @@ from providers.faculty_merge import (
     source_breakdown,
 )
 from providers.generic_faculty_scraper import GenericFacultyScraper
+from providers.pasted_roster import clean_pasted_rosters
 from providers.profile_scrapers import StanfordProfileScraper, TavilyProfileScraper, PlaywrightProfileScraper
 from providers.profile_scrapers.base import ProfileScraper
 from providers.pubmed_email import PubmedEmailProvider
@@ -325,6 +326,8 @@ If a field is not available, use null.
     _discovery_reports[school_name] = summary
     for issue in summary["issues"]:
         print(f"  [Agent 1] ⚠ {school_name}: {issue}")
+    for note in summary["notes"]:
+        print(f"  [Agent 1] {school_name}: {note}")
 
     by_source = source_breakdown(deduped)
     observe.log("agent1_complete", school=school_name, faculty_found=len(deduped),
@@ -873,11 +876,14 @@ def run_pipeline_from_records(records, on_enriched=None, on_qc_complete=None, ro
 
 
 def run_pipeline(schools=None, discipline=None, on_enriched=None, on_qc_complete=None, considerations: str = "",
-                 on_discovery=None):
+                 on_discovery=None, pasted_rosters=None):
     """Run discovery, enrichment and QC for a list of schools.
 
     on_discovery — called once after Agent 1 with one discovery_summary() dict per
     school, so the caller can show which schools came back empty or unread.
+
+    pasted_rosters — rosters a person pasted into the app for directory pages the
+    scraper cannot read (see providers/pasted_roster.py). Untrusted input.
     """
     t_start = time.time()
     observe.start()
@@ -897,6 +903,10 @@ def run_pipeline(schools=None, discipline=None, on_enriched=None, on_qc_complete
     all_faculty = []
     discovery: list[dict] = []   # one discovery_summary() per school, in run order
     _discovery_reports.clear()
+    # Rosters a person pasted in for pages the scraper cannot read. They come from the
+    # browser, so they are validated here before anything uses them.
+    if hasattr(_scraper_provider, "use_pasted_rosters"):
+        _scraper_provider.use_pasted_rosters(clean_pasted_rosters(pasted_rosters))
 
     observe.log_mem("pipeline_start", schools=len(_schools))
     for i, school in enumerate(_schools, 1):
